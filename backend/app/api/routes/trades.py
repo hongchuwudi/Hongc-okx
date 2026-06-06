@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_sync_session
-from app.models.trading import Trade
+from app.entities.trading import Trade
 
 router = APIRouter(prefix="/api")
 

@@ -115,6 +115,6 @@ async def close_redis() -> None:
 
 def init_db() -> None:
     """创建所有数据库表（在应用启动时调用）"""
-    from app.models import Base
+    from app.entities import Base
 
     Base.metadata.create_all(_sync_engine)

@@ -15,8 +15,8 @@ from datetime import datetime
 from app.config import config
 from app.database import SyncSession, get_redis, get_sync_session
 from app.exchange.client import ExchangeClient
-from app.models.system import SystemStatus
-from app.models.trading import EquitySnapshot, Trade
+from app.entities.system import SystemStatus
+from app.entities.trading import EquitySnapshot, Trade
 from app.services.market_data import MarketDataService
 from app.services.risk import RiskService
 from app.services.scheduler import SchedulerService

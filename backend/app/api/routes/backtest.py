@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_sync_session
-from app.models.backtest import BacktestRun
+from app.entities.backtest import BacktestRun
 
 router = APIRouter(prefix="/api/backtest")
 

@@ -19,8 +19,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_sync_session
-from app.models.system import SystemStatus
-from app.models.trading import EquitySnapshot
+from app.entities.system import SystemStatus
+from app.entities.trading import EquitySnapshot
 
 router = APIRouter(prefix="/api")
 
@@ -63,7 +63,7 @@ def get_status():
     if cached:
         return cached
 
-    from app.models.trading import Trade
+    from app.entities.trading import Trade
     session = get_sync_session()
     try:
         # 从 SystemStatus 单行表读取当前状态

@@ -12,7 +12,7 @@
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, Integer, String, Text
-from app.models import Base
+from app.entities import Base
 
 
 class Trade(Base):

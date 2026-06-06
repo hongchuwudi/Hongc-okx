@@ -1,4 +1,13 @@
-"""记忆存储 — 记录 AI 决策、查询历史、生成反思摘要"""
+"""
+创建时间: 2026-06-06
+作者: hongchuwudi
+文件名: store.py 中文名
+描述: 记忆存储 — 记录 AI 决策、查询历史、生成反思摘要供 LLM 参考
+
+包含:
+- 类: MemoryStore — AI 交易记忆管理，支持增删查改和统计摘要
+- 常量: memory_store — MemoryStore 全局单例
+"""
 
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -7,7 +16,7 @@ from app.models.memory import TradeMemory
 
 
 class MemoryStore:
-    """管理 AI 交易记忆的增删查改"""
+    """管理 AI 交易记忆的增删查改，支持记录决策、更新结果、生成统计"""
 
     def add(self, signal: str, confidence: str, reason: str,
             price: float, market_state: str = "") -> int:
@@ -21,25 +30,25 @@ class MemoryStore:
             )
             s.add(m)
             s.commit()
-            return m.id
+            return m.id                                    # 返回新记录的主键 ID
         finally:
             s.close()
 
     def update_outcome(self, memory_id: int, pnl: float) -> None:
-        """记录某次决策的交易结果"""
+        """记录某次决策的最终交易结果（平仓后调用）"""
         s: Session = get_sync_session()
         try:
             m = s.query(TradeMemory).filter_by(id=memory_id).first()
             if m:
-                m.outcome_pnl = round(pnl, 4)
-                m.is_win = pnl > 0
-                m.closed_at = datetime.utcnow()
+                m.outcome_pnl = round(pnl, 4)              # 盈亏金额
+                m.is_win = pnl > 0                         # 是否盈利
+                m.closed_at = datetime.utcnow()            # 平仓时间
                 s.commit()
         finally:
             s.close()
 
     def get_recent(self, limit: int = 10) -> list[dict]:
-        """取最近 N 条记忆，供 AI prompt 使用"""
+        """取最近 N 条记忆记录，供 AI prompt 使用"""
         s: Session = get_sync_session()
         try:
             rows = (
@@ -50,9 +59,10 @@ class MemoryStore:
             )
             return [
                 {
-                    "id": r.id, "timestamp": r.timestamp.strftime("%m-%d %H:%M") if r.timestamp else "",
+                    "id": r.id,
+                    "timestamp": r.timestamp.strftime("%m-%d %H:%M") if r.timestamp else "",
                     "signal": r.signal, "confidence": r.confidence,
-                    "reason": (r.reason or "")[:60],
+                    "reason": (r.reason or "")[:60],       # 截断过长理由
                     "price": r.price, "market_state": r.market_state or "",
                     "outcome_pnl": r.outcome_pnl, "is_win": r.is_win,
                 }
@@ -62,7 +72,7 @@ class MemoryStore:
             s.close()
 
     def get_stats(self) -> dict:
-        """记忆统计摘要"""
+        """生成记忆统计摘要（胜率、平均盈亏、近期趋势等）"""
         s: Session = get_sync_session()
         try:
             total = s.query(TradeMemory).count()
@@ -70,12 +80,12 @@ class MemoryStore:
                 return {"total": 0, "win_rate": 0, "avg_pnl": 0, "recent_trend": "无记录"}
 
             closed = s.query(TradeMemory).filter(TradeMemory.outcome_pnl.isnot(None)).all()
-            wins = [t for t in closed if t.is_win]
-            losses = [t for t in closed if t.is_win is False]
+            wins = [t for t in closed if t.is_win]          # 盈利交易
+            losses = [t for t in closed if t.is_win is False]  # 亏损交易
             win_rate = len(wins) / len(closed) * 100 if closed else 0
             avg_pnl = sum(t.outcome_pnl for t in closed) / len(closed) if closed else 0
 
-            # 最近趋势
+            # 最近趋势（最近 5 笔已结算交易）
             recent = closed[-5:] if len(closed) >= 5 else closed
             recent_wins = sum(1 for t in recent if t.is_win)
             if recent_wins >= 4:
@@ -98,7 +108,7 @@ class MemoryStore:
             s.close()
 
     def build_prompt_context(self, limit: int = 10) -> str:
-        """生成插入 prompt 的记忆文本"""
+        """生成可插入 LLM prompt 的记忆文本，含近期决策和统计"""
         recent = self.get_recent(limit)
         stats = self.get_stats()
 
@@ -128,5 +138,5 @@ class MemoryStore:
         return "\n".join(lines)
 
 
-# 全局单例
+# MemoryStore 全局单例，供各模块直接导入使用
 memory_store = MemoryStore()

@@ -1,3 +1,15 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: App.tsx 主仪表盘布局
+ * 描述: 主布局组件，汇总所有仪表盘子组件，包含 live/backtest 标签切换
+ *
+ * 包含:
+ * - 组件: KpiStrip — KPI 指标紧凑条，展示余额/权益/杠杆/BTC
+ * - 组件: Dashboard — 仪表盘主面板，管理整体布局与标签切换
+ * - 组件: App — 根布局组件，包裹 DashboardProvider
+ * - 函数: fmtUSD — 格式化美元金额显示
+ */
 import { useState } from 'react'
 import { DashboardProvider, useDashboard } from './context/DashboardContext'
 import { useTheme } from './components/layout/ThemeToggle'
@@ -14,11 +26,13 @@ import BacktestPanel from './components/backtest/BacktestPanel'
 import { Wallet, TrendingUp, Zap, Bitcoin } from 'lucide-react'
 import type { AccountInfo, BtcInfo } from './types/dashboard'
 
+// 格式化美元金额显示，处理 null/NaN 异常情况
 function fmtUSD(n: number): string {
   if (n == null || isNaN(n)) return '$—'
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// KPI 指标紧凑条 — 展示余额、权益、杠杆、BTC 价格四项核心指标
 function KpiStrip({ account, btc }: { account: AccountInfo; btc: BtcInfo }) {
   const btcDelta = btc.change != null ? `${btc.change >= 0 ? '+' : ''}${btc.change.toFixed(2)}%` : undefined
   return (
@@ -31,6 +45,7 @@ function KpiStrip({ account, btc }: { account: AccountInfo; btc: BtcInfo }) {
   )
 }
 
+// 仪表盘主面板 — 管理 live/backtest 标签切换，组装所有子组件布局
 function Dashboard() {
   const { state, refresh, toggleAutoRefresh } = useDashboard()
   const { status, trades, equity, loading, error, autoRefresh } = state
@@ -100,6 +115,7 @@ function Dashboard() {
   )
 }
 
+// 根组件 — 包裹 DashboardProvider 提供全局状态
 export default function App() {
   return <DashboardProvider><Dashboard /></DashboardProvider>
 }

@@ -1,101 +1,139 @@
-"""Multi-Agent 协调器 — Supervisor 模式
+"""
+创建时间: 2026-06-07
+作者: hongchuwudi
+文件名: coordinator.py Agent协调器
+描述: 5 Agent Swarm 主流程 — asyncio 并行 + 移交/对话/退回/记忆
 
-使用 LangGraph StateGraph 实现 Worker-Manager 模式：
-Supervisor LLM 动态调度 Market/Risk/Memory 三个 Worker，
-信息充足后交给 Trader 做最终决策。
+包含:
+- 类: AgentCoordinator — 5 Agent Swarm 编排（薄薄一层流水线）
+- 函数: analyze — 调度→分析+复盘∥→风控(可退回)→裁决
 """
 
 import asyncio
 
 import pandas as pd
+from langchain_core.messages import HumanMessage
 
-from app.agents.indicator_service import IndicatorService
-from app.agents.formats import (
-    format_market_text,
-    format_memory_text,
-    format_position_text,
-)
-from app.agents.graph import build_supervisor_graph
-from app.agents.shared import SupervisorState
-from app.agents.schemas import Signal
-from app.config import config
+from app.agents.agent_factory import build_agents
+from app.agents.toolkits.toolkit_data import load_data
+from app.agents.toolkits.tools.toolkit_calc_feedback import generate_feedback
+from app.agents.toolkits.communication.toolkit_router import detect_handoff, handle_asks, last_content
+from app.agents.toolkits.toolkit_logger import ToolCallLogger
 from app.logger import get_logger
 
 logger = get_logger()
+MAX_REDO = 2
 
 
 class AgentCoordinator:
-    """Supervisor 模式协调器。
-
-    与旧并行+投票模式不同，这里让 Supervisor LLM 动态决定：
-    - 调哪些 Agent（market/risk/memory）
-    - 调几次（Supervisor 可循环）
-    - 何时提交给 Trader 做最终决策
-    """
+    """5 Agent Swarm — 移交/对话/退回/记忆。构建逻辑在 agent_factory，路由在 swarm/toolkit_router。"""
 
     def __init__(self):
-        self._graph = build_supervisor_graph()
+        self._agents = build_agents()
+        self._scheduler = self._agents["scheduler"]
+        self._analyst = self._agents["analyst"]
+        self._reviewer = self._agents["reviewer"]
+        self._risk = self._agents["risk"]
+        self._trader = self._agents["trader"]
+        self._logger = ToolCallLogger()
+        self._cfg = {"callbacks": [self._logger]}  # 注入到每次 invoke 的 config
+        logger.info("5 Agent Swarm 就绪")
+
+    # ── 辅助 ──────────────────────────────────────────────
+
+    def _base(self, price: float, equity: float) -> dict:
+        return {"messages": [HumanMessage(content=f"价格:${price:.0f} 权益:${equity:.0f}")],
+                "remaining_steps": 10, "price": price, "equity": equity}
+
+    def _empty(self) -> dict:
+        return {"scheduler_focus": "", "scheduler_priority": "", "scheduler_questions": "",
+                "analysis_signal": "", "analysis_confidence": "", "analysis_report": "", "analysis_key_evidence": "",
+                "reviewer_lesson": "", "reviewer_warning": "", "reviewer_suggestion": "",
+                "max_position_pct": 10.0, "sl_boundary_pct": 2.0, "tp_boundary_pct": 4.0,
+                "go_no_go": "NO_GO", "risk_assessment": "", "final_decision": {}}
 
     # ── 主入口 ────────────────────────────────────────────
 
     async def analyze(
-        self,
-        df: pd.DataFrame,
-        price: float,
-        equity: float,
-        position: dict | None = None,
+        self, df: pd.DataFrame, price: float, equity: float, position: dict | None = None,
     ) -> dict:
-        """运行 Supervisor 图，返回与 loop.py 兼容的决策 dict。"""
-        # 1. 预计算（统一一次）
-        indicators = IndicatorService.latest_indicators(df)
-        trend = IndicatorService.trend_analysis(df)
-        levels = IndicatorService.support_resistance(df)
-        market_state = IndicatorService.market_state(df)
+        load_data(df, price, equity, position)
+        # 学习闭环：检查上一轮决策结果
+        feedback = generate_feedback()
+        base = self._base(price, equity)
+        base["messages"].insert(0, HumanMessage(content=feedback))
+        logger.info(f"[反馈] {feedback.split(chr(10))[0]}")
+        d = 0
 
-        # 2. 构建文本块
-        market_text = format_market_text(price, indicators, trend, levels, market_state)
-        position_text = format_position_text(position)
-        memory_text = format_memory_text()
+        # Phase 1: 调度师
+        sch = await asyncio.to_thread(self._scheduler.invoke, {**base, **self._empty()}, self._cfg)
+        sch, d = await handle_asks(sch, "scheduler", self._agents, {**base, **self._empty()}, d)
+        detect_handoff(sch)
+        logger.info("[调度师] 完成")
 
-        # 3. 构建初始 state
-        state: SupervisorState = {
-            "messages": [],
-            "market_text": market_text,
-            "position_text": position_text,
-            "memory_text": memory_text,
-            "atr_pct": market_state.get("atr_pct", 2.0),
-            "market_report": "",
-            "risk_report": "",
-            "memory_report": "",
-            "next_agent": "",
-            "final_decision": {},
-            "price": price,
-            "equity": equity,
-        }
+        # Phase 2: 分析师 + 复盘师 并行
+        shared = {**sch, "messages": list(sch.get("messages", []))}
+        analyst, reviewer = await asyncio.gather(
+            asyncio.to_thread(self._analyst.invoke, shared, self._cfg),
+            asyncio.to_thread(self._reviewer.invoke, shared, self._cfg),
+        )
+        analyst, d = await handle_asks(analyst, "analyst", self._agents, shared, d)
+        detect_handoff(analyst)
+        logger.info("[分析师] 完成")
+        reviewer, d = await handle_asks(reviewer, "reviewer", self._agents, shared, d)
+        detect_handoff(reviewer)
+        logger.info("[复盘师] 完成")
 
-        # 4. 运行图（同步 invoke，用 run_in_executor 避免阻塞事件循环）
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, self._graph.invoke, state)
+        # Phase 3: 风控师
+        risk_msgs = list(analyst.get("messages", [])) + list(reviewer.get("messages", []))
+        risk_input = {**sch, "messages": risk_msgs,
+                      "analysis_signal": analyst.get("analysis_signal", ""),
+                      "analysis_report": last_content(analyst),
+                      "reviewer_lesson": last_content(reviewer)}
 
-        # 5. 提取决策
-        decision = result.get("final_decision", {}) if isinstance(result, dict) else {}
+        risk_result = await asyncio.to_thread(self._risk.invoke, risk_input, self._cfg)
+        risk_result, d = await handle_asks(risk_result, "risk", self._agents, risk_input, d)
+        handoff = detect_handoff(risk_result)
+        logger.info("[风控师] 完成")
 
+        # 退回重做循环
+        redo = 0
+        while handoff == "analyst" and redo < MAX_REDO:
+            redo += 1
+            logger.info(f"[风控→分析] 退回重做 (第{redo}次)")
+            redo_msgs = list(risk_result.get("messages", []))
+            redo_state = {**risk_input, "messages": redo_msgs}
+            redo_state["messages"].insert(0, HumanMessage(content=f"风控质疑：{last_content(risk_result)}。请重新评估。"))
+            analyst = await asyncio.to_thread(self._analyst.invoke, redo_state, self._cfg)
+            analyst, d = await handle_asks(analyst, "analyst", self._agents, redo_state, d)
+            risk_input2 = {**risk_input, "messages": redo_msgs + list(analyst.get("messages", [])),
+                           "analysis_report": last_content(analyst)}
+            risk_result = await asyncio.to_thread(self._risk.invoke, risk_input2, self._cfg)
+            risk_result, d = await handle_asks(risk_result, "risk", self._agents, risk_input2, d)
+            handoff = detect_handoff(risk_result)
+            logger.info(f"[风控师·重审{redo}] 完成")
+
+        if redo >= MAX_REDO and handoff == "analyst":
+            logger.warning(f"风控退回达上限({MAX_REDO}次)，强制进入裁决")
+
+        # Phase 4: 交易裁决员
+        all_msgs = risk_msgs + list(risk_result.get("messages", []))
+        trader_state = {**risk_input, "messages": all_msgs,
+                        "max_position_pct": risk_result.get("max_position_pct", 10.0),
+                        "go_no_go": risk_result.get("go_no_go", "NO_GO"),
+                        "risk_assessment": last_content(risk_result)}
+        trader_result = await asyncio.to_thread(self._trader.invoke, trader_state, self._cfg)
+        trader_result, _ = await handle_asks(trader_result, "trader", self._agents, trader_state, d)
+        logger.info("[交易裁决员] 完成")
+
+        decision = trader_result.get("final_decision", {})
         if not decision:
-            decision = {
-                "signal": "HOLD", "confidence": "LOW",
-                "reason": "Supervisor 图未产出决策",
-                "stop_loss": price * 0.98, "take_profit": price * 1.02,
-                "position_pct": 0,
-            }
+            decision = {"signal": "HOLD", "confidence": "LOW", "reason": "未产出决策",
+                        "stop_loss": price * 0.98, "take_profit": price * 1.02, "position_pct": 0}
 
-        # 构建 agent_reports（兼容 loop.py 的持久化格式）
-        agent_reports = {}
-        if result.get("market_report"):
-            agent_reports["market"] = str(result["market_report"])[:200]
-        if result.get("risk_report"):
-            agent_reports["risk"] = str(result["risk_report"])[:200]
-        if result.get("memory_report"):
-            agent_reports["memory"] = str(result["memory_report"])[:200]
+        go = risk_result.get("go_no_go", "")
+        if go == "NO_GO" and decision.get("signal") != "HOLD":
+            decision["signal"] = "HOLD"
 
         return {
             "signal": decision.get("signal", "HOLD"),
@@ -104,6 +142,5 @@ class AgentCoordinator:
             "stop_loss": float(decision.get("stop_loss", price * 0.98)),
             "take_profit": float(decision.get("take_profit", price * 1.02)),
             "position_pct": float(decision.get("position_pct", 0)),
-            "source_count": len(agent_reports),
-            "agent_reports": agent_reports,
+            "source_count": 5, "agent_reports": {},
         }

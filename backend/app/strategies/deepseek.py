@@ -1,4 +1,12 @@
-"""DeepSeek AI 策略 — 基于大模型的交易信号生成"""
+"""
+创建时间: 2026-06-06
+作者: hongchuwudi
+文件名: deepseek.py 中文名
+描述: DeepSeek AI 策略 — 基于大模型和行情指标生成交易信号
+
+包含:
+- 类: DeepSeekStrategy — DeepSeek AI 策略实现，通过 LLM 分析市场数据生成信号
+"""
 
 import json
 import re
@@ -14,16 +22,23 @@ from app.agents.indicator_service import IndicatorService
 from app.agents.parser import parse_agent_json_output
 from app.logger import get_logger
 
+# 获取日志记录器
 logger = get_logger()
 
 
 class DeepSeekStrategy(BaseStrategy):
+    """DeepSeek AI 策略 — 调用大模型分析行情数据，结合技术指标生成交易信号"""
 
     def __init__(self, config: dict, openai_client, exchange=None):
+        # 策略配置（含交易对、时间周期等）
         self.config = config
+        # OpenAI 兼容客户端（用于调用 DeepSeek API）
         self.client = openai_client
+        # 交易所客户端（用于获取实时持仓）
         self.exchange = exchange
+        # 历史信号记录（用于趋势判断）
         self.signal_history: List[Dict] = []
+        # Cryptoracle 情绪指标 API Key
         self._sentiment_api_key = app_config.ai.cryptoracle_api_key
 
     @property
@@ -36,9 +51,11 @@ class DeepSeekStrategy(BaseStrategy):
         current_position: Optional[Dict] = None,
         **kwargs,
     ) -> Dict:
+        """生成交易信号（带自动重试）"""
         return self._analyze_with_retry(df, current_position)
 
     def get_current_position(self) -> Optional[Dict]:
+        """从交易所获取当前实时持仓"""
         if self.exchange is None:
             return None
         try:
@@ -48,12 +65,12 @@ class DeepSeekStrategy(BaseStrategy):
             for pos in positions:
                 if pos["symbol"] == symbol and float(pos.get("contracts", 0)) > 0:
                     return {
-                        "side": pos["side"],
-                        "size": float(pos["contracts"]),
-                        "entry_price": float(pos.get("entryPrice", 0)),
-                        "unrealized_pnl": float(pos.get("unrealizedPnl", 0)),
-                        "leverage": float(pos.get("leverage", self.config["leverage"])),
-                        "symbol": pos["symbol"],
+                        "side": pos["side"],                        # 持仓方向
+                        "size": float(pos["contracts"]),             # 持仓数量
+                        "entry_price": float(pos.get("entryPrice", 0)),  # 开仓均价
+                        "unrealized_pnl": float(pos.get("unrealizedPnl", 0)),  # 未实现盈亏
+                        "leverage": float(pos.get("leverage", self.config["leverage"])),  # 杠杆
+                        "symbol": pos["symbol"],                    # 交易对
                     }
             return None
         except Exception as e:
@@ -61,23 +78,24 @@ class DeepSeekStrategy(BaseStrategy):
             return None
 
     def _build_price_data(self, df: pd.DataFrame) -> dict:
+        """构建包含价格、技术指标、趋势分析的完整数据字典"""
         df = self._calc_indicators(df)
         last = df.iloc[-1]
         prev = df.iloc[-2]
         trend = self._get_market_trend(df)
         levels = self._get_support_resistance_levels(df)
         return {
-            "price": last["close"],
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "high": last["high"],
-            "low": last["low"],
-            "volume": last["volume"],
-            "timeframe": self.config["timeframe"],
-            "price_change": ((last["close"] - prev["close"]) / prev["close"]) * 100,
+            "price": last["close"],                                    # 当前价格
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), # 当前时间
+            "high": last["high"],                                      # 最高价
+            "low": last["low"],                                        # 最低价
+            "volume": last["volume"],                                  # 成交量
+            "timeframe": self.config["timeframe"],                     # 时间周期
+            "price_change": ((last["close"] - prev["close"]) / prev["close"]) * 100,  # 价格变化率
             "kline_data": df[["timestamp", "open", "high", "low", "close", "volume"]]
             .tail(10)
-            .to_dict("records"),
-            "technical_data": {
+            .to_dict("records"),                                       # 最近 10 根 K 线
+            "technical_data": {                                        # 技术指标数据
                 "sma_5": last.get("sma_5", 0),
                 "sma_20": last.get("sma_20", 0),
                 "sma_50": last.get("sma_50", 0),
@@ -90,21 +108,25 @@ class DeepSeekStrategy(BaseStrategy):
                 "bb_position": last.get("bb_position", 0),
                 "volume_ratio": last.get("volume_ratio", 0),
             },
-            "trend_analysis": trend,
-            "levels_analysis": levels,
-            "full_data": df,
+            "trend_analysis": trend,                                   # 趋势分析结果
+            "levels_analysis": levels,                                 # 支撑阻力位
+            "full_data": df,                                           # 完整 DataFrame
         }
 
     def _calc_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算所有技术指标"""
         return IndicatorService.calculate_all(df)
 
     def _get_support_resistance_levels(self, df, lookback=20):
+        """获取支撑阻力位"""
         return IndicatorService.support_resistance(df, lookback)
 
     def _get_market_trend(self, df):
+        """获取市场趋势分析"""
         return IndicatorService.trend_analysis(df)
 
     def _get_sentiment(self):
+        """从 Cryptoracle API 获取市场情绪指标"""
         try:
             end_time = datetime.now()
             start_time = end_time - timedelta(hours=4)
@@ -134,13 +156,14 @@ class DeepSeekStrategy(BaseStrategy):
                                     sentiment[ep] = float(val)
                                 except (ValueError, TypeError):
                                     continue
+                        # 同时拿到多头和空头比率时返回
                         if "CO-A-02-01" in sentiment and "CO-A-02-02" in sentiment:
                             net = sentiment["CO-A-02-01"] - sentiment["CO-A-02-02"]
                             return {
-                                "positive_ratio": sentiment["CO-A-02-01"],
-                                "negative_ratio": sentiment["CO-A-02-02"],
-                                "net_sentiment": net,
-                                "data_time": period["startTime"],
+                                "positive_ratio": sentiment["CO-A-02-01"],  # 多头比率
+                                "negative_ratio": sentiment["CO-A-02-02"],  # 空头比率
+                                "net_sentiment": net,                       # 净情绪值
+                                "data_time": period["startTime"],           # 数据时间
                             }
             return None
         except Exception as e:
@@ -148,6 +171,7 @@ class DeepSeekStrategy(BaseStrategy):
             return None
 
     def _generate_technical_analysis_text(self, price_data) -> str:
+        """生成技术分析文本供 AI 阅读"""
         if "technical_data" not in price_data:
             return "技术指标数据不可用"
         tech = price_data["technical_data"]
@@ -183,18 +207,22 @@ class DeepSeekStrategy(BaseStrategy):
 """
 
     def _identify_market_state(self, price_data, tech_data) -> dict:
+        """识别当前市场状态（波动率、趋势阶段等）"""
         return IndicatorService.market_state(price_data["full_data"])
 
     def _calc_dynamic_tp_sl(self, signal, price, market_state, position=None):
+        """根据市场状态动态计算止盈止损价格"""
         atr_pct = market_state.get("atr_pct", 2.0)
         state = market_state.get("state", "")
+        # 根据波动率调整止盈止损比例
         if state.startswith("高波动"):
-            sl_pct, tp_pct = 0.025, 0.06
+            sl_pct, tp_pct = 0.025, 0.06     # 高波动：宽止损宽止盈
         elif state.startswith("低波动"):
-            sl_pct, tp_pct = 0.015, 0.03
+            sl_pct, tp_pct = 0.015, 0.03     # 低波动：窄止损窄止盈
         else:
-            sl_pct, tp_pct = 0.02, 0.05
+            sl_pct, tp_pct = 0.02, 0.05      # 正常波动
 
+        # 根据信号方向计算止盈止损价
         if signal == "BUY":
             stop_loss = price * (1 - sl_pct)
             take_profit = price * (1 + tp_pct)
@@ -205,6 +233,7 @@ class DeepSeekStrategy(BaseStrategy):
             stop_loss = price * 0.98
             take_profit = price * 1.02
 
+        # 持仓盈利 > 5% 时移动止损到保本+1%
         if position and position.get("unrealized_pnl", 0) > 0:
             ep = position.get("entry_price", price)
             sz = position.get("size", 0)
@@ -224,17 +253,21 @@ class DeepSeekStrategy(BaseStrategy):
         }
 
     def _validate_signal(self, ai_signal, price_data, tech_data):
+        """验证 AI 生成的信号，根据技术指标修正不合理之处"""
         signal = ai_signal.get("signal", "HOLD")
         tech = tech_data
         rsi = tech.get("rsi", 50)
+        # RSI 超买时降低 BUY 信心
         if rsi > 80 and signal == "BUY":
             logger.warning("RSI超买(>80)，降低BUY信号信心")
             ai_signal["confidence"] = "LOW"
             ai_signal["reason"] += " [RSI超买警告]"
+        # RSI 超卖时降低 SELL 信心
         if rsi < 20 and signal == "SELL":
             logger.warning("RSI超卖(<20)，降低SELL信号信心")
             ai_signal["confidence"] = "LOW"
             ai_signal["reason"] += " [RSI超卖警告]"
+        # 趋势与信号冲突时转为 HOLD
         trend = price_data.get("trend_analysis", {}).get("overall", "震荡整理")
         conf = ai_signal.get("confidence", "MEDIUM")
         if trend == "强势上涨" and signal == "SELL" and conf != "HIGH":
@@ -245,6 +278,7 @@ class DeepSeekStrategy(BaseStrategy):
             ai_signal["signal"] = "HOLD"
             ai_signal["reason"] = "趋势与信号冲突，保持观望"
             logger.info("信号已修正为HOLD")
+        # MACD 与信号方向不一致时降低信心
         macd = tech.get("macd", 0)
         macd_sig = tech.get("macd_signal", 0)
         if macd > macd_sig and signal == "SELL":
@@ -255,6 +289,7 @@ class DeepSeekStrategy(BaseStrategy):
             logger.warning("MACD空头但信号BUY，降低信心")
             if ai_signal.get("confidence") == "HIGH":
                 ai_signal["confidence"] = "MEDIUM"
+        # 检查止盈止损价格合理性
         price = price_data["price"]
         if signal == "BUY":
             if ai_signal.get("stop_loss", 0) >= price:
@@ -269,9 +304,11 @@ class DeepSeekStrategy(BaseStrategy):
         return ai_signal
 
     def _safe_json_parse(self, text):
+        """安全解析 AI 输出的 JSON"""
         return parse_agent_json_output(text)
 
     def _fallback_signal(self, price) -> Dict:
+        """当 AI 分析失败时返回保守的默认信号"""
         return {
             "signal": "HOLD",
             "reason": "因技术分析暂时不可用，采取保守策略",
@@ -282,6 +319,7 @@ class DeepSeekStrategy(BaseStrategy):
         }
 
     def _analyze_with_retry(self, df: pd.DataFrame, position=None, max_retries=2) -> Dict:
+        """带重试机制的分析入口"""
         for attempt in range(max_retries):
             try:
                 result = self._analyze(df, position)
@@ -297,20 +335,24 @@ class DeepSeekStrategy(BaseStrategy):
         return self._fallback_signal(price)
 
     def _analyze(self, df: pd.DataFrame, position=None) -> Dict:
+        """核心分析逻辑：构建 prompt，调用 AI，解析结果"""
         price_data = self._build_price_data(df)
         tech_analysis = self._generate_technical_analysis_text(price_data)
 
+        # 构建 K 线数据文本
         kline_text = f"【最近5根{self.config['timeframe']}K线数据】\n"
         for i, k in enumerate(price_data["kline_data"][-5:]):
             trend = "阳线" if k["close"] > k["open"] else "阴线"
             chg = ((k["close"] - k["open"]) / k["open"]) * 100
             kline_text += f"K线{i + 1}: {trend} 开盘:{k['open']:.2f} 收盘:{k['close']:.2f} 涨跌:{chg:+.2f}%\n"
 
+        # 上次信号参考
         signal_text = ""
         if self.signal_history:
             last = self.signal_history[-1]
             signal_text = f"\n【上次信号】{last.get('signal', 'N/A')} (信心: {last.get('confidence', 'N/A')})"
 
+        # 获取市场情绪
         sent = self._get_sentiment()
         if sent:
             sign = "+" if sent["net_sentiment"] >= 0 else ""
@@ -318,6 +360,7 @@ class DeepSeekStrategy(BaseStrategy):
         else:
             sentiment_text = "【市场情绪】数据暂不可用"
 
+        # 当前持仓信息
         cur_pos = position or self.get_current_position()
         if cur_pos:
             pos_text = f"{cur_pos['side']}仓, 数量: {cur_pos['size']}, 盈亏: {cur_pos['unrealized_pnl']:.2f}USDT"
@@ -333,6 +376,7 @@ class DeepSeekStrategy(BaseStrategy):
         from app.memory import memory_store
         memory_context = memory_store.build_prompt_context(limit=10)
 
+        # 构建完整的 AI prompt
         prompt = f"""
 你是专业的BTC交易分析师。{self.config['timeframe']}周期分析：
 
@@ -377,6 +421,7 @@ RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend
 }}
 """
         try:
+            # 调用 DeepSeek API
             response = self.client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
@@ -393,6 +438,7 @@ RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend
             result = response.choices[0].message.content
             logger.info(f"AI原始回复: {result[:200]}...")
 
+            # 解析 AI 回复中的 JSON
             start_idx = result.find("{")
             end_idx = result.rfind("}") + 1
             if start_idx != -1 and end_idx != 0:
@@ -402,14 +448,17 @@ RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend
             else:
                 signal_data = self._fallback_signal(price_data["price"])
 
+            # 验证必要字段
             required = ["signal", "reason", "stop_loss", "take_profit", "confidence"]
             if not all(f in signal_data for f in required):
                 signal_data = self._fallback_signal(price_data["price"])
 
             logger.info(f"AI原始信号: {signal_data['signal']} (信心: {signal_data['confidence']})")
+            # 用技术指标验证 AI 信号
             signal_data = self._validate_signal(signal_data, price_data, tech_data)
             logger.info(f"验证后信号: {signal_data['signal']} (信心: {signal_data['confidence']})")
 
+            # 非 HOLD 时检查止盈止损合理性
             if signal_data["signal"] != "HOLD":
                 dynamic = self._calc_dynamic_tp_sl(
                     signal_data["signal"], price_data["price"], market_state, cur_pos
@@ -423,6 +472,7 @@ RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend
                 else:
                     sl_ok = ai_sl > cp and ai_sl < cp * 1.05
                     tp_ok = ai_tp < cp and ai_tp > cp * 0.90
+                # AI 给出的 TP/SL 不合理时使用动态计算值
                 if not sl_ok or not tp_ok:
                     logger.warning(
                         f"AI止盈止损不合理，使用动态计算: SL={dynamic['stop_loss']}, TP={dynamic['take_profit']}"
@@ -431,13 +481,16 @@ RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend
                     signal_data["take_profit"] = dynamic["take_profit"]
 
             signal_data["timestamp"] = price_data["timestamp"]
+            # 记录到历史
             self.signal_history.append(signal_data)
             if len(self.signal_history) > 30:
                 self.signal_history.pop(0)
 
+            # 信号统计
             same = sum(1 for s in self.signal_history if s.get("signal") == signal_data["signal"])
             logger.info(f"信号统计: {signal_data['signal']} (最近{len(self.signal_history)}次中出现{same}次)")
 
+            # 连续相同信号告警
             if len(self.signal_history) >= 3:
                 last3 = [s["signal"] for s in self.signal_history[-3:]]
                 if len(set(last3)) == 1:

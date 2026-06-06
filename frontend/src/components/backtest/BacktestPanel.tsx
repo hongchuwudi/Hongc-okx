@@ -1,3 +1,18 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: BacktestPanel.tsx 回测面板
+ * 描述: 回测面板，支持创建新回测、查看历史回测列表和回测详情（含权益曲线和交易明细）
+ *
+ * 包含:
+ * - 类型: BTSummary — 回测概要
+ * - 类型: BT — 回测完整数据
+ * - 类型: BacktestMetrics — 回测指标
+ * - 类型: BacktestTrade — 回测交易记录
+ * - 类型: EquityPoint — 回测权益曲线数据点
+ * - 组件: BacktestPanel — 回测面板主组件
+ * - 组件: MiniM — 指标迷你卡片组件
+ */
 import { useState, useEffect, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
@@ -11,8 +26,10 @@ interface EquityPoint { bar: number; timestamp: string; equity: number }
 
 const API = '/api/backtest'
 
+// 回测列表缓存，避免切换 tab 时重复加载
 let _runsCache: BTSummary[] | null = null
 
+// 回测面板主组件 — 包含回测列表、新建表单和详情展示
 export default function BacktestPanel() {
   const [runs, setRuns] = useState<BTSummary[]>(_runsCache || [])
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -39,7 +56,7 @@ export default function BacktestPanel() {
 
   useEffect(() => { loadRuns() }, [loadRuns])
 
-  // 点击一条历史记录加载详情
+  // 点击历史记录行时加载回测详情
   async function selectRun(id: number) {
     setSelectedId(id)
     setLoadingDetail(true)
@@ -65,6 +82,7 @@ export default function BacktestPanel() {
     finally { setRunning(false) }
   }
 
+  // 生成权益曲线 ECharts 配置项
   function eqOption(curve: EquityPoint[]): EChartsOption {
     const dark = document.documentElement.dataset.theme === 'dark'
     const t = dark ? '#8a8a9e' : '#6b6b7b'; const t2 = dark ? '#5a5a72' : '#9b9bae'; const b = dark ? '#1f1f3a' : '#e8e8ec'
@@ -189,6 +207,7 @@ export default function BacktestPanel() {
   )
 }
 
+// 指标迷你卡片组件 — 用于回测详情页面展示单行指标
 function MiniM({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; color: string }) {
   return (
     <div className="card-dash bg-base-200 text-center py-3 px-2">

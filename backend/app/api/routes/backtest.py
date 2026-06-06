@@ -1,5 +1,15 @@
+"""
+创建时间: 2026-06-06
+作者: hongchuwudi
+文件名: backtest.py 回测API路由
+描述: 回测 API — 提供回测触发执行、历史列表和详情查询接口
 
-"""回测 API — /api/backtest/*"""
+包含:
+- 类: RunRequest — 回测启动请求参数模型
+- 函数: start_backtest — 触发回测（同步执行，返回结果）
+- 函数: list_runs — 获取历史回测记录列表
+- 函数: get_run — 获取单次回测的详细结果
+"""
 
 import asyncio
 import json
@@ -19,23 +29,24 @@ router = APIRouter(prefix="/api/backtest")
 
 
 class RunRequest(BaseModel):
+    """回测请求参数：策略、品种、周期、资金、费率等"""
     strategy: str = "technical"
     symbol: str = "BTC/USDT:USDT"
     timeframe: str = "1h"
-    initial_capital: float = 100.0
-    position_ratio: float = 0.5
-    fee_rate: float = 0.001
-    warmup: int = 50
-    data_limit: int = 500
+    initial_capital: float = 100.0  # 初始资金（USDT）
+    position_ratio: float = 0.5  # 每笔仓位比例
+    fee_rate: float = 0.001  # 交易费率（0.1%）
+    warmup: int = 50  # 策略预热 K 线数
+    data_limit: int = 500  # 拉取历史数据条数
 
 
 @router.post("/run")
 def start_backtest(req: RunRequest):
-    """触发一次回测（同步执行，返回结果）"""
+    """触发一次回测（同步执行，返回策略评估指标与交易明细）"""
     session: Session = get_sync_session()
     run: Optional[BacktestRun] = None
     try:
-        # 创建记录
+        # 创建回测运行记录，状态设为 running
         run = BacktestRun(
             strategy_name=req.strategy,
             symbol=req.symbol,
@@ -52,7 +63,7 @@ def start_backtest(req: RunRequest):
         session.commit()
         run_id = run.id
 
-        # 下载数据
+        # 从 OKX 下载历史 OHLCV 数据
         import ccxt
         from app.config import config
 
@@ -63,7 +74,7 @@ def start_backtest(req: RunRequest):
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
 
-        # 初始化策略
+        # 根据策略名称初始化对应策略实例
         if req.strategy == "technical":
             from app.strategies.technical import TechnicalStrategy
             strategy = TechnicalStrategy()
@@ -81,7 +92,7 @@ def start_backtest(req: RunRequest):
             session.commit()
             return {"ok": False, "error": run.error_message}
 
-        # 运行回测
+        # 执行回测引擎
         from app.backtest.engine import run_backtest
         result = run_backtest(
             df, strategy,
@@ -92,7 +103,7 @@ def start_backtest(req: RunRequest):
         )
         metrics = result["metrics"]
 
-        # 更新结果
+        # 将回测结果写入数据库
         run.status = "completed"
         run.final_equity = metrics["final_equity"]
         run.total_return_pct = metrics["total_return_pct"]
@@ -119,6 +130,7 @@ def start_backtest(req: RunRequest):
             "equity_curve": result["equity_curve"],
         }
     except Exception as e:
+        # 回测异常时标记为 failed
         try:
             if run:
                 run.status = "failed"
@@ -134,7 +146,7 @@ def start_backtest(req: RunRequest):
 
 @router.get("/runs")
 def list_runs(limit: int = Query(20, ge=1, le=100)):
-    """历史回测列表"""
+    """获取历史回测运行记录列表（按时间倒序）"""
     session = get_sync_session()
     try:
         rows = (
@@ -168,7 +180,7 @@ def list_runs(limit: int = Query(20, ge=1, le=100)):
 
 @router.get("/runs/{run_id}")
 def get_run(run_id: int):
-    """单次回测详情"""
+    """获取单次回测的完整详情（含交易明细和权益曲线）"""
     session = get_sync_session()
     try:
         r = session.query(BacktestRun).filter_by(id=run_id).first()

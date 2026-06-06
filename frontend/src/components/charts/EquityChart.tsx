@@ -1,3 +1,15 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: EquityChart.tsx 权益曲线图表
+ * 描述: 权益曲线图表，使用 ECharts 展示账户权益随时间变化趋势，含涨跌幅标记
+ *
+ * 包含:
+ * - 类型: Props — 组件属性类型
+ * - 函数: c — 获取图表主题色配置
+ * - 函数: fmtUSD — 美元金额格式化
+ * - 组件: EquityChart — 权益曲线 ECharts 组件
+ */
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
@@ -6,13 +18,16 @@ import type { EquityPoint } from '../../types/dashboard'
 
 interface Props { data: EquityPoint[] }
 
+// 获取图表主题色配置（支持亮色/暗色主题）
 function c() {
   const dark = document.documentElement.dataset.theme === 'dark'
   return { text: dark ? '#8a8a9e' : '#6b6b7b', text2: dark ? '#5a5a72' : '#9b9bae', border: dark ? '#1f1f3a' : '#e8e8ec', green: '#26a69a', red: '#ef5350', bg: dark ? 'rgba(20,20,37,0.95)' : 'rgba(255,255,255,0.95)' }
 }
 
+// 格式化美元金额显示
 function fmtUSD(n: number): string { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2 }) }
 
+// 权益曲线图表组件 — 展示最近 12h 账户权益变化及涨跌幅度
 export default function EquityChart({ data }: Props) {
   const { dates, equities, lineColor, delta, deltaPct } = useMemo(() => {
     if (!data?.length) return { dates: [] as string[], equities: [] as number[], lineColor: '#26a69a', delta: 0, deltaPct: 0 }

@@ -1,16 +1,30 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: ActiveTradePanel.tsx 活跃交易面板
+ * 描述: 活跃交易面板，展示当前持仓状态、未实现盈亏和 AI Agent 团队决策详情
+ *
+ * 包含:
+ * - 函数: fmtUSD — 美元格式化
+ * - 函数: parseAgentReport — 解析 JSON 格式的 Agent 报告
+ * - 组件: ActiveTradePanel — 活跃交易信息卡片
+ */
 import { TrendingUp, TrendingDown, Shield, Target, Brain, BarChart3, Users } from 'lucide-react'
 import type { Position, AiSignal } from '../../types/dashboard'
 
+// 美元金额格式化，处理 null/NaN 异常值
 function fmtUSD(n: number): string {
   if (n == null || isNaN(n)) return '--'
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// 解析 JSON 格式的 Agent 决策报告，提取 reason 和各 Agent 分析文本
 function parseAgentReport(reason: string): { reason: string; agents?: { market?: string; risk?: string; memory?: string } } | null {
   try { return JSON.parse(reason) }
   catch { return null }
 }
 
+// 活跃交易面板 — 展示持仓 PnL、方向、入场价/标记价和 AI Agent 决策详情
 export default function ActiveTradePanel({ position, signal, btcPrice }: {
   position: Position | null; signal: AiSignal; btcPrice: number
 }) {

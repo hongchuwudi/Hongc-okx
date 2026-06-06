@@ -1,3 +1,13 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: Navbar.tsx 导航栏
+ * 描述: 导航栏组件，包含标签页切换（监控/回测）、刷新、自动刷新开关和主题切换
+ *
+ * 包含:
+ * - 类型: NavbarProps — 导航栏属性类型
+ * - 组件: Navbar — 顶部导航栏组件
+ */
 import { RefreshCw, LayoutDashboard, FlaskConical } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 
@@ -10,6 +20,7 @@ interface NavbarProps {
   statusRunning: boolean
 }
 
+// 导航栏组件 — 包含标签切换、状态指示、刷新、自动刷新和主题切换
 export default function Navbar({ tab, onTab, onRefresh, loading, autoRefresh, onToggleAuto, theme, onToggleTheme, lastUpdated, statusRunning }: NavbarProps) {
   const ago = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null
 

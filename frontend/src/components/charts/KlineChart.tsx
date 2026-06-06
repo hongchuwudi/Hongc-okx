@@ -1,3 +1,15 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: KlineChart.tsx K线图表
+ * 描述: K 线图组件，支持多时间周期切换，展示 OHLC 蜡烛图、MA 均线和成交量柱状图
+ *
+ * 包含:
+ * - 类型: KlineData — K 线数据点类型
+ * - 函数: chartColors — 获取图表配色方案（支持亮/暗主题）
+ * - 函数: ma — 计算移动平均线
+ * - 组件: KlineChart — K 线图主组件
+ */
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
@@ -5,6 +17,7 @@ import { CandlestickChart, Loader2 } from 'lucide-react'
 
 interface KlineData { time: number; open: number; high: number; low: number; close: number; volume: number }
 
+// 获取图表配色方案（支持亮色/暗色主题自适应）
 function chartColors() {
   const dark = document.documentElement.dataset.theme === 'dark'
   return {
@@ -20,11 +33,13 @@ function chartColors() {
   }
 }
 
+// K 线图主组件 — 支持 1m/5m/30m/1h/4h/1d 周期切换，30 秒自动刷新
 export default function KlineChart() {
   const [data, setData] = useState<KlineData[]>([])
   const [loading, setLoading] = useState(true)
   const [timeframe, setTimeframe] = useState('1h')
 
+  // 获取 K 线数据 — 请求指定周期的 OHLCV 数据
   const fetchData = useCallback(async (tf: string) => {
     setLoading(true)
     try { const res = await fetch(`/api/kline?symbol=BTC/USDT:USDT&timeframe=${tf}&limit=120`); setData(await res.json()) }
@@ -46,7 +61,7 @@ export default function KlineChart() {
     const ohlc = data.map(d => [d.open, d.close, d.low, d.high])
     const volumes = data.map(d => d.volume)
     const closes = data.map(d => d.close)
-    // MA 均线
+    // 计算移动平均线（SMA） — 返回指定周期的均值序列
     function ma(period: number) {
       const r: (number | null)[] = []
       for (let i = 0; i < closes.length; i++) {

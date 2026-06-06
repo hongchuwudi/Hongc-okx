@@ -1,4 +1,17 @@
-"""仪表盘 API — /api/status, /api/health, /api/equity"""
+"""
+创建时间: 2026-06-06
+作者: hongchuwudi
+文件名: dashboard.py 仪表盘API路由
+描述: 仪表盘 API — 提供系统状态、健康检查、权益曲线和 K 线数据接口
+
+包含:
+- 函数: health — 数据库连接健康检查
+- 函数: get_status — 获取系统完整运行状态（含账户、持仓、AI 信号、风控等）
+- 函数: get_equity — 获取历史权益曲线数据
+- 函数: get_kline — 获取 K 线数据（OHLCV），供前端 ECharts 渲染
+- 常量: _cache — 简易内存缓存
+- 常量: _CACHE_TTL — 缓存有效期（秒）
+"""
 
 from typing import Optional
 
@@ -11,12 +24,13 @@ from app.models.trading import EquitySnapshot
 
 router = APIRouter(prefix="/api")
 
-# 简易内存缓存
+# 简易内存缓存，避免高频请求重复查库
 _cache: dict = {}
-_CACHE_TTL = 2
+_CACHE_TTL = 2  # 缓存有效期 2 秒
 
 
 def _cache_get(key: str) -> Optional[dict]:
+    """从内存缓存中获取数据（未过期则返回）"""
     import time
     entry = _cache.get(key)
     if entry and time.time() - entry["ts"] < _CACHE_TTL:
@@ -25,12 +39,14 @@ def _cache_get(key: str) -> Optional[dict]:
 
 
 def _cache_set(key: str, data):
+    """将数据写入内存缓存（带时间戳）"""
     import time
     _cache[key] = {"data": data, "ts": time.time()}
 
 
 @router.get("/health")
 def health():
+    """数据库连接健康检查端点"""
     try:
         session = get_sync_session()
         session.execute("SELECT 1")
@@ -42,6 +58,7 @@ def health():
 
 @router.get("/status")
 def get_status():
+    """获取系统完整状态：运行状态、账户信息、持仓、AI 信号、止盈止损订单等"""
     cached = _cache_get("status")
     if cached:
         return cached
@@ -49,6 +66,7 @@ def get_status():
     from app.models.trading import Trade
     session = get_sync_session()
     try:
+        # 从 SystemStatus 单行表读取当前状态
         row = session.query(SystemStatus).filter_by(id=1).first()
         if row is None:
             return {
@@ -62,6 +80,7 @@ def get_status():
                 "tp_sl_orders": {"stop_loss_order_id": None, "take_profit_order_id": None},
             }
 
+        # 组装持仓信息（如果有持仓）
         position = None
         if row.position_side:
             position = {
@@ -120,6 +139,7 @@ def get_status():
 
 @router.get("/equity")
 def get_equity(limit: int = Query(500, ge=1, le=2000)):
+    """获取历史权益曲线数据点，用于前端绘制权益走势图"""
     cached = _cache_get(f"equity_{limit}")
     if cached:
         return cached
@@ -148,7 +168,7 @@ def get_kline(
     timeframe: str = Query("1h"),
     limit: int = Query(100, ge=1, le=500),
 ):
-    """返回 K 线数据（OHLCV），供 ECharts 渲染"""
+    """获取 K 线数据（OHLCV），供前端 ECharts 渲染蜡烛图"""
     import ccxt
     from app.config import config
 

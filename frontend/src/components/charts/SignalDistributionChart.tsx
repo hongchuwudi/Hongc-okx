@@ -1,3 +1,13 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: SignalDistributionChart.tsx 信号分布饼图
+ * 描述: 信号分布饼图，展示 BUY/SELL/HOLD 三类交易信号的占比分布
+ *
+ * 包含:
+ * - 常量: COLORS — 信号类型对应的颜色映射
+ * - 组件: SignalDistributionChart — 信号分布饼图组件
+ */
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
@@ -6,6 +16,7 @@ import type { Trade } from '../../types/dashboard'
 
 const COLORS: Record<string, string> = { BUY: '#00b96b', SELL: '#f54c5c', HOLD: '#f5a623' }
 
+// 信号分布饼图组件 — 统计 BUY/SELL/HOLD 信号数量及占比
 export default function SignalDistributionChart({ trades }: { trades: Trade[] }) {
   const pieData = useMemo(() => {
     if (!trades?.length) return []

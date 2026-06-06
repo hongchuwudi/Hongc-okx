@@ -1,6 +1,16 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: PerformanceStats.tsx 绩效统计卡片
+ * 描述: 绩效统计面板，展示总盈亏、胜率和总交易数三项核心绩效指标
+ *
+ * 包含:
+ * - 组件: PerformanceStats — 绩效统计卡片组件
+ */
 import { Trophy } from 'lucide-react'
 import type { Performance } from '../types/dashboard'
 
+// 绩效统计卡片 — 展示总盈亏、胜率和总交易数三项核心指标
 export default function PerformanceStats({ performance }: { performance: Performance }) {
   const { total_pnl, win_rate, total_trades } = performance
   return (

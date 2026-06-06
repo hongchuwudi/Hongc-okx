@@ -1,4 +1,16 @@
-"""回测引擎 — 逐 K 线重放策略，模拟交易"""
+"""
+创建时间: 2026-06-06
+作者: hongchuwudi
+文件名: engine.py 中文名
+描述: 回测引擎 — 逐 K 线重放策略，模拟真实交易并计算性能指标
+
+包含:
+- 函数: _to_native — 递归将 numpy 类型转换为 Python 原生类型
+- 函数: run_backtest — 回测主函数，逐 K 线重放策略逻辑
+- 函数: _check_stop — 检测止盈止损是否触发
+- 函数: _close_position — 计算平仓盈亏
+- 函数: _compute_metrics — 计算回测性能指标
+"""
 
 import numpy as np
 import pandas as pd
@@ -8,7 +20,7 @@ from app.strategies.base import BaseStrategy
 
 
 def _to_native(v: Any) -> Any:
-    """递归转换 numpy 类型为 Python 原生类型，防止 PostgreSQL 写入报错"""
+    """递归将 numpy 类型转换为 Python 原生类型，防止 PostgreSQL 写入报错"""
     if isinstance(v, (np.floating,)):
         return float(v)
     if isinstance(v, (np.integer,)):
@@ -29,31 +41,35 @@ def run_backtest(
     warmup: int = 50,
 ) -> dict:
     """
-    逐根 K 线重放。
+    逐根 K 线重放策略逻辑，模拟真实交易。
 
-    每根 K 线先检测止盈止损，再生成信号。支持 TechnicalStrategy 和 DeepSeekStrategy。
+    每根 K 线先检测止盈止损是否触发，再生成交易信号。
+    支持 TechnicalStrategy 和 DeepSeekStrategy。
+    返回包含交易记录、权益曲线和性能指标的字典。
     """
     if len(df) < warmup + 5:
         raise ValueError(f"数据不足，需要至少 {warmup + 5} 条 K 线，实际 {len(df)} 条")
 
     df = df.reset_index(drop=True)
-    capital = initial_capital
-    position: Optional[dict] = None
-    trades: list = []
-    equity_curve: list = []
+    capital = initial_capital                    # 当前现金
+    position: Optional[dict] = None              # 当前持仓，None 表示空仓
+    trades: list = []                            # 交易记录列表
+    equity_curve: list = []                      # 权益曲线数据
 
+    # 逐 K 线遍历
     for i in range(warmup, len(df)):
-        window = df.iloc[: i + 1].copy()
-        bar = df.iloc[i]
-        price = float(bar["close"])
-        high = float(bar.get("high", price))
-        low = float(bar.get("low", price))
-        ts = str(bar.get("timestamp", i))
+        window = df.iloc[: i + 1].copy()          # 截至当前 K 线的历史窗口
+        bar = df.iloc[i]                          # 当前 K 线
+        price = float(bar["close"])               # 收盘价
+        high = float(bar.get("high", price))      # 最高价
+        low = float(bar.get("low", price))        # 最低价
+        ts = str(bar.get("timestamp", i))         # 时间戳
 
-        # ── 止盈止损检测 ──
+        # 止盈止损检测（先检查）
         stopped_out = _check_stop(price, high, low, position)
 
         if stopped_out:
+            # 止盈止损触发，平仓
             pnl = _close_position(position, stopped_out, fee_rate)
             capital += position["size"] * stopped_out - (position["size"] * stopped_out * fee_rate)
             trades.append({
@@ -66,7 +82,7 @@ def run_backtest(
             position = None
 
         else:
-            # 生成信号
+            # 止盈止损未触发，生成交易信号
             try:
                 signal = strategy.generate_signal(window, position)
             except Exception:
@@ -81,13 +97,13 @@ def run_backtest(
             tp = signal.get("take_profit", price * 1.02)
 
             if position is None:
-                # 无持仓 → 开仓（扣除本金 + 手续费）
+                # 无持仓 → 开仓
                 if sig in ("BUY", "SELL"):
-                    trade_capital = capital * position_ratio
-                    size = trade_capital / price
-                    fee = trade_capital * fee_rate
-                    capital -= trade_capital  # 扣除买入本金
-                    capital -= fee             # 扣除手续费
+                    trade_capital = capital * position_ratio     # 开仓资金
+                    size = trade_capital / price                 # 计算数量
+                    fee = trade_capital * fee_rate               # 手续费
+                    capital -= trade_capital                     # 扣除买入本金
+                    capital -= fee                               # 扣除手续费
                     side = "long" if sig == "BUY" else "short"
                     position = {
                         "side": side, "size": size, "entry_price": price,
@@ -118,7 +134,7 @@ def run_backtest(
                     })
                     position = None
 
-        # ── 权益曲线 ──
+        # 记录当前权益曲线
         unrealized = 0.0
         if position:
             if position["side"] == "long":
@@ -129,7 +145,7 @@ def run_backtest(
             "bar": i, "timestamp": ts, "equity": round(capital + unrealized, 2),
         })
 
-    # 强制平仓
+    # 回测结束，强制平仓
     if position and len(df) > 0:
         last_bar = df.iloc[-1]
         last_price = float(last_bar["close"])
@@ -156,20 +172,20 @@ def _check_stop(price: float, high: float, low: float, position: Optional[dict])
     if not position:
         return None
     if position["side"] == "long":
-        if low <= position["stop_loss"]:
+        if low <= position["stop_loss"]:      # 多仓：最低价触及止损
             return position["stop_loss"]
-        if high >= position["take_profit"]:
+        if high >= position["take_profit"]:   # 多仓：最高价触及止盈
             return position["take_profit"]
     else:
-        if high >= position["stop_loss"]:
+        if high >= position["stop_loss"]:     # 空仓：最高价触及止损
             return position["stop_loss"]
-        if low <= position["take_profit"]:
+        if low <= position["take_profit"]:    # 空仓：最低价触及止盈
             return position["take_profit"]
     return None
 
 
 def _close_position(position: dict, exit_price: float, fee_rate: float) -> float:
-    """计算平仓盈亏"""
+    """计算平仓盈亏（扣除手续费）"""
     if position["side"] == "long":
         pnl = (exit_price - position["entry_price"]) * position["size"]
     else:
@@ -179,23 +195,24 @@ def _close_position(position: dict, exit_price: float, fee_rate: float) -> float
 
 
 def _compute_metrics(trades: list, equity_curve: list, initial_capital: float) -> dict:
+    """计算回测性能指标，含总收益率、胜率、盈亏比、最大回撤、夏普比率等"""
     final_equity = equity_curve[-1]["equity"] if equity_curve else initial_capital
     total_return = (final_equity - initial_capital) / initial_capital * 100
 
-    winning = [t for t in trades if t["pnl"] > 0]
-    losing = [t for t in trades if t["pnl"] < 0]
+    winning = [t for t in trades if t["pnl"] > 0]         # 盈利交易
+    losing = [t for t in trades if t["pnl"] < 0]          # 亏损交易
     total_trades = len(trades)
     win_rate = len(winning) / total_trades * 100 if total_trades else 0
 
-    gross_profit = sum(t["pnl"] for t in winning) if winning else 0
-    gross_loss = abs(sum(t["pnl"] for t in losing)) if losing else 0
+    gross_profit = sum(t["pnl"] for t in winning) if winning else 0    # 总盈利
+    gross_loss = abs(sum(t["pnl"] for t in losing)) if losing else 0   # 总亏损
     profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
 
     avg_win = gross_profit / len(winning) if winning else 0
     avg_loss = gross_loss / len(losing) if losing else 0
     avg_trade = sum(t["pnl"] for t in trades) / total_trades if total_trades else 0
 
-    # 最大回撤
+    # 计算最大回撤
     if equity_curve:
         equities = [e["equity"] for e in equity_curve]
         peak = equities[0]
@@ -209,7 +226,7 @@ def _compute_metrics(trades: list, equity_curve: list, initial_capital: float) -
     else:
         max_dd = 0.0
 
-    # 夏普比率
+    # 计算夏普比率（小时级数据年化）
     if len(equity_curve) > 1:
         eqs = pd.Series([e["equity"] for e in equity_curve])
         returns = eqs.pct_change().dropna()

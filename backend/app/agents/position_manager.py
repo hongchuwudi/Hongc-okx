@@ -1,10 +1,19 @@
-"""动态持仓管理器 — 每 tick 更新追踪止损/止盈
+"""
+创建时间: 2026-06-06
+作者: hongchuwudi
+文件名: position_manager.py 动态追踪止损止盈管理
+描述: 动态持仓管理器 — 每 tick 更新追踪止损/止盈
 
-即使 AI 发出 HOLD，也会根据浮动盈亏和波动率更新 OKX 算法止盈止损单。
+包含:
+- 类: PositionManager — 动态持仓管理，追踪止损、ATR 自适应止盈、去抖更新
+- 函数: update — 评估并更新持仓的止盈止损
+- 函数: _calc_trailing_stop — 计算追踪止损价位
+- 函数: _calc_adaptive_tp — 根据波动率调整止盈目标
 """
 
 from app.logger import get_logger
 
+# 全局日志记录器
 logger = get_logger()
 
 
@@ -18,9 +27,13 @@ class PositionManager:
     """
 
     def __init__(self, exchange, symbol: str = "BTC/USDT:USDT"):
+        # 交易所客户端实例
         self._exchange = exchange
+        # 交易对符号
         self._symbol = symbol
+        # 上次设置的止损价（用于去抖比较）
         self._last_sl: float | None = None
+        # 上次设置的止盈价（用于去抖比较）
         self._last_tp: float | None = None
 
     # ── 主入口 ────────────────────────────────────────────
@@ -37,15 +50,16 @@ class PositionManager:
 
         Returns: {updated: bool, stop_loss: float, take_profit: float, reason: str}
         """
+        # 无持仓时跳过
         if not position or not position.get("side") or position.get("size", 0) <= 0:
             return {"updated": False, "stop_loss": current_sl, "take_profit": current_tp, "reason": "无持仓"}
 
         side = position["side"]
-        entry = float(position.get("entry_price", current_price))
-        size = float(position.get("size", 0))
-        unrealized = float(position.get("unrealized_pnl", 0))
+        entry = float(position.get("entry_price", current_price))  # 入场价
+        size = float(position.get("size", 0))  # 持仓张数
+        unrealized = float(position.get("unrealized_pnl", 0))  # 浮动盈亏
 
-        # 计算盈亏百分比
+        # 计算盈亏百分比（基于 1 倍杠杆估算）
         if entry > 0 and size > 0:
             margin = entry * size * 0.01  # 1 倍杠杆估算保证金
             profit_pct = (unrealized / margin * 100) if margin > 0 else 0
@@ -56,14 +70,14 @@ class PositionManager:
         new_sl = self._calc_trailing_stop(side, entry, current_price, profit_pct, current_sl, atr_pct)
         new_tp = self._calc_adaptive_tp(side, entry, current_price, profit_pct, current_tp, atr_pct)
 
-        # 去抖：变化 < 0.1% 不更新
+        # 去抖：变化 < 0.1% 不更新（避免频繁 API 调用）
         sl_changed = self._last_sl is None or abs(new_sl - self._last_sl) / self._last_sl > 0.001
         tp_changed = self._last_tp is None or abs(new_tp - self._last_tp) / self._last_tp > 0.001
 
         if not sl_changed and not tp_changed:
             return {"updated": False, "stop_loss": current_sl, "take_profit": current_tp, "reason": "无显著变化"}
 
-        # 更新 OKX 算法单
+        # 更新 OKX 算法单（止盈止损挂单）
         try:
             okx_symbol = self._symbol.replace("/", "-").replace(":USDT", "-SWAP")
             close_side = "sell" if side == "long" else "buy"
@@ -80,6 +94,7 @@ class PositionManager:
                 self._symbol, close_side, "conditional", size, new_tp, new_tp
             )
 
+            # 记录最新值
             self._last_sl = new_sl
             self._last_tp = new_tp
 
@@ -116,15 +131,15 @@ class PositionManager:
         """
         if side == "long":
             if profit_pct > 5:
-                return max(current_sl, entry * 1.01)
+                return max(current_sl, entry * 1.01)  # 保本+1%
             elif profit_pct > 2:
-                return max(current_sl, price * 0.99)
-            return current_sl
+                return max(current_sl, price * 0.99)  # 锁定1%利润
+            return current_sl  # 保持当前 SL
         else:  # short
             if profit_pct > 5:
-                return min(current_sl, entry * 0.99)
+                return min(current_sl, entry * 0.99)  # 保本-1%
             elif profit_pct > 2:
-                return min(current_sl, price * 1.01)
+                return min(current_sl, price * 1.01)  # 锁定1%利润
             return current_sl
 
     # ── 自适应止盈计算 ─────────────────────────────────────
@@ -138,12 +153,13 @@ class PositionManager:
         高波动(ATR>3%): 目标更远
         低波动(ATR<1%): 目标更近
         """
+        # 根据 ATR 确定止盈倍数
         if atr_pct > 3:
-            mult = 6.0
+            mult = 6.0  # 高波动：6倍 ATR
         elif atr_pct < 1:
-            mult = 3.0
+            mult = 3.0  # 低波动：3倍 ATR
         else:
-            mult = 5.0
+            mult = 5.0  # 正常：5倍 ATR
 
         if side == "long":
             return price * (1 + atr_pct / 100 * mult)

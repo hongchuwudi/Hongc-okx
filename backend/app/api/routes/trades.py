@@ -1,4 +1,12 @@
-"""交易记录 API — /api/trades (支持分页和扁平数组两种模式)"""
+"""
+创建时间: 2026-06-06
+作者: hongchuwudi
+文件名: trades.py 交易记录API路由
+描述: 交易记录 API — /api/trades 支持扁平数组和分页两种响应模式
+
+包含:
+- 函数: get_trades — 获取交易记录列表（支持 ?limit=N 扁平模式或 ?page=&page_size= 分页模式）
+"""
 
 from typing import Optional
 
@@ -17,10 +25,14 @@ def get_trades(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
+    """获取交易记录列表，支持两种模式：
+    - ?limit=N：返回扁平数组（前端默认使用）
+    - ?page=&page_size=：返回分页对象
+    """
     session: Session = get_sync_session()
     try:
         if limit is not None:
-            # 扁平数组模式（兼容前端 fetchTrades(limit)）
+            # 扁平数组模式（兼容前端 fetchTrades(limit) 调用）
             trades = (
                 session.query(Trade)
                 .order_by(Trade.timestamp.desc())

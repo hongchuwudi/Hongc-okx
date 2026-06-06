@@ -1,3 +1,17 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: TradingFloor.tsx 交易大厅Phaser场景
+ * 描述: 基于 Phaser.js 的 3D 等距交易大厅场景，四名 Agent 在办公室中自由行走并响应用户查询
+ *
+ * 包含:
+ * - 常量: TW/TH/GW/GH — 等距瓦片和网格尺寸
+ * - 常量: AGENTS — 四名 Agent 工位配置信息
+ * - 类: TradingScene — Phaser 游戏场景，管理地板、房间、工位及 Agent BFS 寻路行走动画
+ * - 类型: AR — Agent 报告文本映射
+ * - 函数: pR — 解析 AI 原因 JSON
+ * - 组件: TradingFloor — React 包裹层，管理 Phaser 画布生命周期和状态同步
+ */
 import { useRef, useEffect, useState, useCallback } from 'react'
 import * as Phaser from 'phaser'
 
@@ -5,14 +19,17 @@ import * as Phaser from 'phaser'
 const TW = 64; const TH = 32
 const GW = 22; const GH = 16
 
+// 获取当前主题配色方案（亮色/暗色）
 function getTheme() {
   const dark = typeof document !== 'undefined' && document.documentElement.dataset.theme !== 'light'
   return dark
     ? { floor: 0x111a35, floorStroke: 0x1a2446, carpet: 0x2b355f, carpetStroke: 0x6ee7ff, bg: 0x0b1020, wallFill: 0x0f1730, wallStroke: 0x2b355f }
     : { floor: 0xe1e4ea, floorStroke: 0xc5c9d0, carpet: 0xd5dae0, carpetStroke: 0x3370ff, bg: 0xf0f2f5, wallFill: 0xd5dae0, wallStroke: 0xbcc3cc }
 }
+// 等距投影坐标转换 — 将网格坐标转为屏幕像素坐标
 function iso(gx: number, gy: number) { return { x: (gx - gy) * TW / 2, y: (gx + gy) * TH / 2 } }
 
+// 四名 Agent 工位配置 — 含 ID、名称、部门、主题色和网格坐标
 const AGENTS = [
   { id: 'market', name: '分析师', dept: '行情研究部', accent: 0xffd66e, gx: 5, gy: 3 },
   { id: 'risk', name: '风控官', dept: '风险管理部', accent: 0xff6e6e, gx: 12, gy: 3 },
@@ -20,11 +37,13 @@ const AGENTS = [
   { id: 'trader', name: '交易员', dept: '交易执行部', accent: 0xa7ff83, gx: 12, gy: 11 },
 ]
 
+// Phaser 游戏场景 — 管理地板/房间/墙壁渲染，Agent BFS 寻路行走动画
 class TradingScene extends Phaser.Scene {
   private agents: Map<string, { av: Phaser.GameObjects.Image; si: Phaser.GameObjects.Image; st: Phaser.GameObjects.Text; lb: Phaser.GameObjects.Text; state: string; bx: number; by: number; bob: Phaser.Tweens.Tween | null }> = new Map()
 
   constructor() { super('trading') }
 
+  // 加载并生成等距纹理：地板、地毯、墙壁、门、桌子、Agent 等
   preload() {
     const T = getTheme()
     this._tex('floor', TW, TH, g => {
@@ -72,8 +91,10 @@ class TradingScene extends Phaser.Scene {
     this._tex('sdone', 20, 20, g => { g.fillStyle(0x0b1020, 0.85); g.fillCircle(10, 10, 7); g.lineStyle(1, 0x6ee7ff, 0.7); g.strokeCircle(10, 10, 5); g.fillStyle(0x6ee7ff, 1); g.fillCircle(10, 10, 4) })
   }
 
+  // 纹理生成工具方法 — 用 Graphics 绘制后生成可复用的纹理
   private _tex(k: string, w: number, h: number, d: (g: Phaser.GameObjects.Graphics) => void) { const g = this.add.graphics(); d(g); g.generateTexture(k, w, h); g.destroy() }
 
+  // 创建场景 — 铺设地板、房间、工位，初始化 Agent 并启动自动漫游
   create() {
     const T = getTheme()
     this.cameras.main.setBounds(-600, -500, 3200, 2600)
@@ -134,7 +155,7 @@ class TradingScene extends Phaser.Scene {
     // 同事工位也加入
     AGENTS.forEach(a => spots.push([a.gx, a.gy, 3]))  // 工位 weight 3
 
-    // 加权随机选点 — 房间权重高于工位
+    // 加权随机选点算法 — 房间权重高于工位，增加 Agent 漫游多样性
     function pickSpot() {
       const total = spots.reduce((s, sp) => s + sp[2], 0)
       let r = Math.random() * total
@@ -164,6 +185,7 @@ class TradingScene extends Phaser.Scene {
     for (let x = -1; x <= GW+1; x++) { blocked.add(k(x, -2)); blocked.add(k(x, -1)); blocked.add(k(x, GH+1)); blocked.add(k(x, GH+2)) }
     for (let y = -2; y <= GH+2; y++) { blocked.add(k(-2, y)); blocked.add(k(-1, y)); blocked.add(k(GW+1, y)); blocked.add(k(GW+2, y)) }
 
+    // BFS 寻路算法 — 在 blocked 网格中寻找最短路径，允许穿过起点和目标点
     function bfs(fx: number, fy: number, tx: number, ty: number): { gx: number; gy: number }[] {
       const sk = k(Math.round(fx), Math.round(fy)); const gk = k(Math.round(tx), Math.round(ty))
       if (sk === gk) return []
@@ -189,6 +211,7 @@ class TradingScene extends Phaser.Scene {
     AGENTS.forEach(a => { moving.set(a.id, false); pos.set(a.id, { gx: a.gx, gy: a.gy }) })
 
     const S = this
+    // 逐格步进动画 — 按 BFS 路径一步步移动 Agent
     function walkStep(aid: string, path: { gx: number; gy: number }[], i: number) {
       const d = S.agents.get(aid)!
       if (i >= path.length) {
@@ -224,6 +247,7 @@ class TradingScene extends Phaser.Scene {
     }})
   }
 
+  // 创建房间（地毯 + 墙壁 + 门 + 标签）
   private _room(gx: number, gy: number, gw: number, gh: number, dgx: number, dgy: number, label: string, color: number) {
     for (let x = gx; x < gx + gw; x++)
       for (let y = gy; y < gy + gh; y++) {
@@ -237,11 +261,13 @@ class TradingScene extends Phaser.Scene {
     this.add.text(lp.x, lp.y + 4, label, { fontFamily: 'monospace', fontSize: '11px', color: '#' + color.toString(16).padStart(6, '0'), resolution: 2 }).setOrigin(0.5).setDepth(lp.y + 600)
   }
 
+  // 放置墙壁或门（door 参数决定纹理选择）
   private _w(gx: number, gy: number, door: boolean) {
     const p = iso(gx, gy)
     this.add.image(p.x, p.y - 18, door ? 'door' : 'wall').setOrigin(0.5, 0).setDepth(p.y + 60)
   }
 
+  // 更新指定 Agent 的状态（idle/working/done）并切换纹理和显示文本
   updateStatus(id: string, state: string, text: string) {
     const a = this.agents.get(id); if (!a) return; a.state = state
     const accent = AGENTS.find(x => x.id === id)?.accent ?? 0xc9d3ff
@@ -252,10 +278,11 @@ class TradingScene extends Phaser.Scene {
   }
 }
 
-// ---- React ----
+// 解析 AI 原因 JSON
 interface AR { market?: string; risk?: string; memory?: string }
 function pR(r: string): { reason: string; agents?: AR } | null { try { return JSON.parse(r) } catch { return null } }
 
+// TradingFloor React 组件 — 管理 Phaser 画布生命周期，同步 AI 推理状态到场景
 export default function TradingFloor({ aiReason, lastUpdate }: { aiReason: string; lastUpdate: number | null }) {
   const cr = useRef<HTMLDivElement>(null)
   const gr = useRef<Phaser.Game | null>(null)

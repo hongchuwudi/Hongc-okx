@@ -1,19 +1,43 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: AgentOffice.tsx AI智能体办公场景
+ * 描述: AI 智能体办公场景，展示分析师/风控官/复盘师/交易员四角色协作状态动画
+ *
+ * 包含:
+ * - 类型: A — 智能体状态描述对象
+ * - 类型: AgentReports — 各 Agent 报告文本映射
+ * - 函数: mk — 创建默认智能体状态
+ * - 函数: parseReason — 解析 AI 决策原因 JSON
+ * - 常量: IDS — 智能体 ID 列表
+ * - 常量: NAMES — 智能体中文名列表
+ * - 常量: ACCENTS — 各角色主题色列表
+ * - 常量: ROLES — 各角色英文名列表
+ * - 常量: JOB — 各角色职责描述映射
+ * - 组件: AgentOffice — 四宫格 Agent 状态展示组件
+ */
 import { useState, useEffect, useRef } from 'react'
 import TradingFloor from '../trading/TradingFloor'
 
+// 智能体状态对象类型 — 包含 ID、状态、显示文本和倒计时
 interface A { id: string; state: string; text: string; textTimer: number }
+// 四名 Agent 的 ID、中文名、主题色和英文角色名
 const IDS = ['market', 'risk', 'memory', 'trader']
 const NAMES = ['分析师', '风控官', '复盘师', '交易员']
 const ACCENTS = ['#ffd66e', '#ff6e6e', '#6ee7ff', '#a7ff83']
 const ROLES = ['Market', 'Risk', 'Memory', 'Trader']
 
+// 创建默认智能体状态（空闲、无文本）
 function mk(): A { return { id: '', state: 'idle', text: '', textTimer: 0 } }
 
+// Agent 报告文本映射类型
 interface AgentReports { market?: string; risk?: string; memory?: string }
+// 解析 AI 决策原因 JSON 字符串
 function parseReason(r: string): { reason: string; agents?: AgentReports } | null {
   try { return JSON.parse(r) } catch { return null }
 }
 
+// Agent 办公室场景 — 展示四 Agent 状态动画，根据 AI reason 驱动状态流转
 export default function AgentOffice({ aiReason, lastUpdate }: { aiReason: string; lastUpdate: number | null }) {
   const [agents, setAgents] = useState<A[]>(Array.from({ length: 4 }, mk))
   const triggered = useRef('')
@@ -58,9 +82,11 @@ export default function AgentOffice({ aiReason, lastUpdate }: { aiReason: string
     return () => clearInterval(t)
   }, [])
 
+  // 状态标签和颜色映射
   const stateLabel: Record<string, string> = { idle: '空闲', walking: '移动中', working: '工作中', done: '已完成' }
   const stateColor: Record<string, string> = { idle: 'var(--color-base-content)', walking: '#ffd66e', working: '#a7ff83', done: '#6ee7ff' }
-  const JOB: Record<string, string> = {
+// 各 Agent 职责描述映射
+const JOB: Record<string, string> = {
     market: '分析K线形态与趋势方向',
     risk: '评估风险敞口与仓位建议',
     memory: '复盘历史决策与胜率模式',

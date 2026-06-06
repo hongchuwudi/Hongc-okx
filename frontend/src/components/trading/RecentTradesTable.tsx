@@ -1,11 +1,23 @@
+/**
+ * 创建时间: 2026-06-06
+ * 作者: hongchuwudi
+ * 文件名: RecentTradesTable.tsx 近期交易记录表格
+ * 描述: 近期交易记录表格，展示最近 N 笔成交历史，包含信号方向、价格、盈亏和理由
+ *
+ * 包含:
+ * - 函数: fmtTime — 时间戳格式化（截取月-日 时:分）
+ * - 组件: RecentTradesTable — 近期交易记录表格组件
+ */
 import { ScrollText, ArrowUp, ArrowDown, Minus } from 'lucide-react'
 import type { Trade } from '../../types/dashboard'
 
+// 格式化时间戳 — 截取 "MM-DD HH:MM" 格式显示
 function fmtTime(ts: string): string {
   if (!ts || ts === 'N/A') return '—'
   return ts.length >= 16 ? ts.substring(5, 16) : ts
 }
 
+// 近期交易记录表格 — 显示最近 20 条交易的信号、价格、盈亏等关键信息
 export default function RecentTradesTable({ trades }: { trades: Trade[] }) {
   const recent = trades.slice(-20).reverse()
   if (recent.length === 0) {

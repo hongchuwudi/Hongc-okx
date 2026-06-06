@@ -1,7 +1,7 @@
 """
 创建时间: 2026-06-07
 作者: hongchuwudi
-文件名: toolkit_logger.py 工具调用日志+推送
+文件名: agent_logger.py 工具调用日志+推送
 描述: LangChain 回调处理器 — 记录工具调用 + 推送 agent_tool_call 到状态总线
 
 包含:
@@ -42,7 +42,7 @@ class ToolCallLogger(BaseCallbackHandler):
     def _push(self, event_type: str, **kwargs):
         """异步推送事件到状态总线（跨线程安全）。"""
         try:
-            from app.agents.toolkits.toolkit_agent_status import publish_agent_status
+            from app.agents.agent_status import publish_agent_status
 
             async def _do():
                 await publish_agent_status(event_type, _current_agent, **kwargs)

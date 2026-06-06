@@ -1,7 +1,7 @@
 """
 创建时间: 2026-06-07
 作者: hongchuwudi
-文件名: toolkit_agent_status.py Agent状态总线
+文件名: agent_status.py Agent状态总线
 描述: 每个 Agent 的输入/输出/状态暴露给前端 — 通过 Redis Pub/Sub 实时推送
 
 包含:

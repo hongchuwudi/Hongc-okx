@@ -18,8 +18,8 @@ from app.agents.agent_factory import build_agents
 from app.agents.toolkits.toolkit_data import load_data
 from app.agents.toolkits.tools.toolkit_calc_feedback import generate_feedback
 from app.agents.toolkits.communication.toolkit_router import detect_handoff, handle_asks, last_content
-from app.agents.toolkits.toolkit_logger import ToolCallLogger, set_current_agent
-from app.agents.toolkits.toolkit_agent_status import agent_input, agent_output
+from app.agents.agent_logger import ToolCallLogger, set_current_agent
+from app.agents.agent_status import agent_input, agent_output
 from app.logger import get_logger
 
 logger = get_logger()

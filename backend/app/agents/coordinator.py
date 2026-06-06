@@ -19,6 +19,7 @@ from app.agents.toolkits.toolkit_data import load_data
 from app.agents.toolkits.tools.toolkit_calc_feedback import generate_feedback
 from app.agents.toolkits.communication.toolkit_router import detect_handoff, handle_asks, last_content
 from app.agents.toolkits.toolkit_logger import ToolCallLogger
+from app.agents.toolkits.toolkit_agent_status import agent_input, agent_output
 from app.logger import get_logger
 
 logger = get_logger()
@@ -66,21 +67,27 @@ class AgentCoordinator:
         d = 0
 
         # Phase 1: 调度师
+        await agent_input("scheduler", f"价格:${price:.0f} 权益:${equity:.0f}")
         sch = await asyncio.to_thread(self._scheduler.invoke, {**base, **self._empty()}, self._cfg)
         sch, d = await handle_asks(sch, "scheduler", self._agents, {**base, **self._empty()}, d)
+        await agent_output("scheduler", last_content(sch)[:150], detect_handoff(sch))
         detect_handoff(sch)
         logger.info("[调度师] 完成")
 
         # Phase 2: 分析师 + 复盘师 并行
         shared = {**sch, "messages": list(sch.get("messages", []))}
+        await agent_input("analyst", "收到调度师指令，开始技术分析")
+        await agent_input("reviewer", "收到调度师指令，开始历史复盘")
         analyst, reviewer = await asyncio.gather(
             asyncio.to_thread(self._analyst.invoke, shared, self._cfg),
             asyncio.to_thread(self._reviewer.invoke, shared, self._cfg),
         )
         analyst, d = await handle_asks(analyst, "analyst", self._agents, shared, d)
+        await agent_output("analyst", last_content(analyst)[:150], detect_handoff(analyst))
         detect_handoff(analyst)
         logger.info("[分析师] 完成")
         reviewer, d = await handle_asks(reviewer, "reviewer", self._agents, shared, d)
+        await agent_output("reviewer", last_content(reviewer)[:150], detect_handoff(reviewer))
         detect_handoff(reviewer)
         logger.info("[复盘师] 完成")
 
@@ -91,9 +98,11 @@ class AgentCoordinator:
                       "analysis_report": last_content(analyst),
                       "reviewer_lesson": last_content(reviewer)}
 
+        await agent_input("risk", f"收到分析报告，开始风险评估")
         risk_result = await asyncio.to_thread(self._risk.invoke, risk_input, self._cfg)
         risk_result, d = await handle_asks(risk_result, "risk", self._agents, risk_input, d)
         handoff = detect_handoff(risk_result)
+        await agent_output("risk", last_content(risk_result)[:150], handoff)
         logger.info("[风控师] 完成")
 
         # 退回重做循环
@@ -122,8 +131,10 @@ class AgentCoordinator:
                         "max_position_pct": risk_result.get("max_position_pct", 10.0),
                         "go_no_go": risk_result.get("go_no_go", "NO_GO"),
                         "risk_assessment": last_content(risk_result)}
+        await agent_input("trader", f"收到风控边界，开始综合裁决")
         trader_result = await asyncio.to_thread(self._trader.invoke, trader_state, self._cfg)
         trader_result, _ = await handle_asks(trader_result, "trader", self._agents, trader_state, d)
+        await agent_output("trader", last_content(trader_result)[:150])
         logger.info("[交易裁决员] 完成")
 
         decision = trader_result.get("final_decision", {})

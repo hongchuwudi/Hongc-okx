@@ -18,7 +18,7 @@ from app.agents.agent_factory import build_agents
 from app.agents.toolkits.toolkit_data import load_data
 from app.agents.toolkits.tools.toolkit_calc_feedback import generate_feedback
 from app.agents.toolkits.communication.toolkit_router import detect_handoff, handle_asks, last_content
-from app.agents.toolkits.toolkit_logger import ToolCallLogger
+from app.agents.toolkits.toolkit_logger import ToolCallLogger, set_current_agent
 from app.agents.toolkits.toolkit_agent_status import agent_input, agent_output
 from app.logger import get_logger
 
@@ -58,6 +58,7 @@ class AgentCoordinator:
     async def analyze(
         self, df: pd.DataFrame, price: float, equity: float, position: dict | None = None,
     ) -> dict:
+        self._logger._loop = asyncio.get_running_loop()
         load_data(df, price, equity, position)
         # 学习闭环：检查上一轮决策结果
         feedback = generate_feedback()
@@ -67,6 +68,7 @@ class AgentCoordinator:
         d = 0
 
         # Phase 1: 调度师
+        set_current_agent("scheduler")
         await agent_input("scheduler", f"价格:${price:.0f} 权益:${equity:.0f}")
         sch = await asyncio.to_thread(self._scheduler.invoke, {**base, **self._empty()}, self._cfg)
         sch, d = await handle_asks(sch, "scheduler", self._agents, {**base, **self._empty()}, d)
@@ -76,7 +78,9 @@ class AgentCoordinator:
 
         # Phase 2: 分析师 + 复盘师 并行
         shared = {**sch, "messages": list(sch.get("messages", []))}
+        set_current_agent("analyst")
         await agent_input("analyst", "收到调度师指令，开始技术分析")
+        set_current_agent("reviewer")
         await agent_input("reviewer", "收到调度师指令，开始历史复盘")
         analyst, reviewer = await asyncio.gather(
             asyncio.to_thread(self._analyst.invoke, shared, self._cfg),
@@ -98,6 +102,7 @@ class AgentCoordinator:
                       "analysis_report": last_content(analyst),
                       "reviewer_lesson": last_content(reviewer)}
 
+        set_current_agent("risk")
         await agent_input("risk", f"收到分析报告，开始风险评估")
         risk_result = await asyncio.to_thread(self._risk.invoke, risk_input, self._cfg)
         risk_result, d = await handle_asks(risk_result, "risk", self._agents, risk_input, d)
@@ -113,6 +118,7 @@ class AgentCoordinator:
             redo_msgs = list(risk_result.get("messages", []))
             redo_state = {**risk_input, "messages": redo_msgs}
             redo_state["messages"].insert(0, HumanMessage(content=f"风控质疑：{last_content(risk_result)}。请重新评估。"))
+            set_current_agent("analyst")
             analyst = await asyncio.to_thread(self._analyst.invoke, redo_state, self._cfg)
             analyst, d = await handle_asks(analyst, "analyst", self._agents, redo_state, d)
             risk_input2 = {**risk_input, "messages": redo_msgs + list(analyst.get("messages", [])),
@@ -131,6 +137,7 @@ class AgentCoordinator:
                         "max_position_pct": risk_result.get("max_position_pct", 10.0),
                         "go_no_go": risk_result.get("go_no_go", "NO_GO"),
                         "risk_assessment": last_content(risk_result)}
+        set_current_agent("trader")
         await agent_input("trader", f"收到风控边界，开始综合裁决")
         trader_result = await asyncio.to_thread(self._trader.invoke, trader_state, self._cfg)
         trader_result, _ = await handle_asks(trader_result, "trader", self._agents, trader_state, d)

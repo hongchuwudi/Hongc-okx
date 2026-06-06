@@ -1,0 +1,35 @@
+# ========================================
+# BTC/USDT 自动交易系统 — v2.0
+# ========================================
+
+# 交易所
+ccxt
+
+# AI 模型
+openai>=1.0
+langchain
+langgraph
+langchain-openai
+
+# 数据处理
+pandas
+python-dotenv
+requests
+urllib3
+
+# 数据库
+sqlalchemy>=2.0
+asyncpg
+psycopg2-binary
+redis>=5.0
+
+# Web 服务
+fastapi
+uvicorn
+
+# 异步
+aiohttp
+
+# v1.0 遗留（仅 legacy/ 需要，正常运行时可选）
+# streamlit
+# plotly

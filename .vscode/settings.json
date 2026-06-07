@@ -5,5 +5,70 @@
             "envManager": "ms-python.python:venv",
             "packageManager": "ms-python.python:pip"
         }
+    ],
+
+    "debugConsoleBeautify.enabled": true,
+    "debugConsoleBeautify.formatJSON": true,
+    "debugConsoleBeautify.showLogSeparator": true,
+    "debugConsoleBeautify.outputBufferTimeoutMs": 200,
+    "debugConsoleBeautify.maxJsonSizeKB": 1024,
+    "debugConsoleBeautify.safeJsonSizeKB": 32,
+
+    "debugConsoleBeautify.rules": [
+        {
+            "pattern": "ERROR|error|Error",
+            "color": {
+                "dark": "#FF5555",
+                "light": "#CC0000"
+            },
+            "bold": true
+        },
+        {
+            "pattern": "WARNING|warning|Warn",
+            "color": {
+                "dark": "#FFB86B",
+                "light": "#CC7700"
+            },
+            "bold": true
+        },
+        {
+            "pattern": "INFO|info|Info",
+            "color": {
+                "dark": "#6BB6FF",
+                "light": "#0066CC"
+            }
+        },
+        {
+            "pattern": "DEBUG|debug|Debug",
+            "color": {
+                "dark": "#888888",
+                "light": "#666666"
+            },
+            "italic": true
+        },
+        {
+            "pattern": "Traceback \\(most recent call last\\)|Exception",
+            "color": {
+                "dark": "#FF5555",
+                "light": "#CC0000"
+            },
+            "bold": true
+        },
+        {
+            "pattern": "FAILED|failed|Fail",
+            "color": {
+                "dark": "#FF5555",
+                "light": "#CC0000"
+            },
+            "bold": true
+        },
+        {
+            "pattern": "PASSED|passed|Pass",
+            "color": {
+                "dark": "#50FA7B",
+                "light": "#00AA44"
+            },
+            "bold": true
+        }
     ]
 }

@@ -19,6 +19,7 @@ from app.api.routes.strategies import router as strategies_router
 from app.api.routes.trades import router as trades_router
 from app.api.routes.backtest import router as backtest_router
 from app.api.routes.agents import router as agents_router
+from app.api.routes.config import router as config_router
 from app.api.ws import router as ws_router
 from app.database import init_db
 
@@ -40,6 +41,7 @@ app.include_router(trades_router)           # /api/trades
 app.include_router(strategies_router)       # /api/strategies
 app.include_router(backtest_router)         # /api/backtest/*
 app.include_router(agents_router)           # /api/agents/status
+app.include_router(config_router)           # /api/config
 app.include_router(ws_router)               # /ws/live
 
 # 生产模式：serve React 前端构建产物

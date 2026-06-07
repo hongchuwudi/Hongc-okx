@@ -43,7 +43,21 @@ class AgentCoordinator:
     # ── 辅助 ──────────────────────────────────────────────
 
     def _base(self, price: float, equity: float) -> dict:
-        return {"messages": [HumanMessage(content=f"价格:${price:.0f} 权益:${equity:.0f}")],
+        from app.agents.toolkits.toolkit_data import _position, _df
+        pos = _position()
+        pos_text = (f"持仓: {'多头' if pos['side']=='long' else '空头'} {pos.get('size',0)}张 "
+                    f"入场${pos.get('entry_price',0):.2f} 浮亏${pos.get('unrealized_pnl',0):+.2f} "
+                    f"杠杆{pos.get('leverage',1)}x") if pos and pos.get('side') else "无持仓"
+
+        context = (
+            f"=== 市场数据(已预加载，无需调工具获取) ===\n"
+            f"BTC价格: ${price:,.2f}\n"
+            f"账户权益: ${equity:,.2f}\n"
+            f"{pos_text}\n"
+            f"================================\n"
+            f"请直接分析决策，不要调用get_price/get_position等查询工具。"
+        )
+        return {"messages": [HumanMessage(content=context)],
                 "remaining_steps": 10, "price": price, "equity": equity}
 
     def _empty(self) -> dict:

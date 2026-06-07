@@ -44,8 +44,8 @@ def build_agents() -> dict:
 
     return {
         "scheduler": create_react_agent(
-            model=get_scheduler_llm().bind_tools(pos_tools + mkt_tools[:1] + [transfer_to_analyst, transfer_to_reviewer, ask_analyst, ask_reviewer, ask_risk] + sch_mem),
-            tools=pos_tools + mkt_tools[:1] + [transfer_to_analyst, transfer_to_reviewer, ask_analyst, ask_reviewer, ask_risk] + sch_mem,
+            model=get_scheduler_llm().bind_tools([transfer_to_analyst, transfer_to_reviewer] + sch_mem),
+            tools=[transfer_to_analyst, transfer_to_reviewer] + sch_mem,
             prompt=SystemMessage(content=SCHEDULER_PROMPT + H), name="scheduler",
         ),
         "analyst": create_react_agent(
@@ -64,8 +64,8 @@ def build_agents() -> dict:
             prompt=SystemMessage(content=RISK_PROMPT + H), name="risk",
         ),
         "trader": create_react_agent(
-            model=get_trader_llm().bind_tools(pos_tools + mkt_tools[:1] + [ask_risk] + trader_mem),
-            tools=pos_tools + mkt_tools[:1] + [ask_risk] + trader_mem,
+            model=get_trader_llm().bind_tools([ask_risk] + trader_mem),
+            tools=[ask_risk] + trader_mem,
             prompt=SystemMessage(content=TRADER_PROMPT + H), name="trader",
         ),
     }

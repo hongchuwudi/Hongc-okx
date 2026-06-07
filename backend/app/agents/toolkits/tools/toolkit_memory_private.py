@@ -18,34 +18,47 @@ from sqlalchemy import text
 
 _lock = threading.Lock()
 _table_ensured = False
+_pg_available = True
+_max_entries = 20  # 每个 Agent 最多记 20 条
+_fallback_stores: dict[str, dict] = {}
 
 
 def _ensure_table():
-    """创建私有记忆表（幂等，首次调用时执行）。"""
-    global _table_ensured
+    """创建私有记忆表（幂等，首次调用时执行）。PG 不可用时降级到内存。"""
+    global _table_ensured, _pg_available
     if _table_ensured:
         return
-    from app.database import get_sync_session
-    session = get_sync_session()
     try:
-        session.execute(text("""
-            CREATE TABLE IF NOT EXISTS agent_private_memory (
-                agent_name VARCHAR(32) NOT NULL,
-                key        VARCHAR(128) NOT NULL,
-                value      TEXT DEFAULT '',
-                updated_at TIMESTAMP DEFAULT NOW(),
-                PRIMARY KEY (agent_name, key)
-            )
-        """))
-        session.commit()
-    finally:
-        session.close()
+        from app.database import get_sync_session
+        session = get_sync_session()
+        try:
+            session.execute(text("""
+                CREATE TABLE IF NOT EXISTS agent_private_memory (
+                    agent_name VARCHAR(32) NOT NULL,
+                    key        VARCHAR(128) NOT NULL,
+                    value      TEXT DEFAULT '',
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    PRIMARY KEY (agent_name, key)
+                )
+            """))
+            session.commit()
+        finally:
+            session.close()
+    except Exception:
+        _pg_available = False
     _table_ensured = True
 
 
 def _save(agent_name: str, key: str, value: str):
-    """写入（UPSERT）。"""
+    """写入（UPSERT）。PG 不可用时写内存。"""
     _ensure_table()
+    if not _pg_available:
+        s = _fallback_stores.setdefault(agent_name, {})
+        if len(s) >= _max_entries:
+            oldest = next(iter(s))
+            del s[oldest]
+        s[key] = value
+        return
     from app.database import get_sync_session
     session = get_sync_session()
     try:
@@ -61,8 +74,10 @@ def _save(agent_name: str, key: str, value: str):
 
 
 def _load_all(agent_name: str) -> dict:
-    """加载指定 Agent 的所有记忆。"""
+    """加载指定 Agent 的所有记忆。PG 不可用时从内存读。"""
     _ensure_table()
+    if not _pg_available:
+        return dict(_fallback_stores.get(agent_name, {}))
     from app.database import get_sync_session
     session = get_sync_session()
     try:

@@ -6,7 +6,7 @@
 
 包含:
 - 函数: _ensure_listener — 确保单个 Redis 监听器后台任务运行
-- 函数: _listen — Redis Pub/Sub 监听循环，广播消息给所有 WebSocket 客户端
+- 函数: _listen — Redis Pub/Sub 监听循环（异常自动重连）
 - 函数: websocket_live — WebSocket 端点，接收客户端连接并处理 ping/pong 心跳
 - 常量: _connections — 活跃的 WebSocket 连接集合
 - 常量: _listener_task — 后台监听任务的引用
@@ -18,45 +18,69 @@ import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.database import get_redis_pubsub
+from app.core.logger import get_logger
 
 router = APIRouter()
+logger = get_logger()
 
-_connections: set[WebSocket] = set()  # 活跃的 WebSocket 连接集合
-_listener_task: asyncio.Task | None = None  # 后台 Redis 监听任务引用
+_connections: set[WebSocket] = set()
+_listener_task: asyncio.Task | None = None
 
 
 async def _ensure_listener():
-    """确保系统中只有一个 Redis Pub/Sub 监听器在运行"""
     global _listener_task
     if _listener_task is None or _listener_task.done():
         _listener_task = asyncio.create_task(_listen())
 
 
 async def _listen():
-    """单例后台任务：监听 Redis Pub/Sub 频道，广播消息给所有连接的 WebSocket 客户端"""
-    try:
-        redis = await get_redis_pubsub()
-        pubsub = redis.pubsub()
-        await pubsub.subscribe("ws:channel:updates")
-        while True:
-            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-            if msg and msg.get("data"):
-                stale: set[WebSocket] = set()  # 已断开的连接，稍后清理
-                for ws in _connections:
+    """Redis Pub/Sub 监听循环，异常自动重连，永不退出。"""
+    global _connections
+    while True:
+        pubsub = None
+        try:
+            redis = await get_redis_pubsub()
+            pubsub = redis.pubsub()
+            await pubsub.subscribe("ws:channel:updates")
+            logger.info("[ws listen] 已订阅 Redis ws:channel:updates")
+            while True:
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if msg is None:
+                    continue
+                if msg.get("type") == "message" and msg.get("data"):
+                    data = msg["data"]
                     try:
-                        await ws.send_text(msg["data"])
+                        info = json.loads(data)
+                        t = info.get("type", "?")
                     except Exception:
-                        stale.add(ws)
-                _connections -= stale
-    except asyncio.CancelledError:
-        pass
-    except Exception:
-        pass
+                        t = "?"
+                    stale: set[WebSocket] = set()
+                    for ws in _connections:
+                        try:
+                            await ws.send_text(data)
+                        except Exception:
+                            stale.add(ws)
+                    _connections -= stale
+        except asyncio.CancelledError:
+            logger.info("[ws listen] 任务取消")
+            break
+        except Exception as e:
+            logger.error(f"[ws listen] 异常，3s 后重连: {type(e).__name__}: {e}")
+            await asyncio.sleep(3)
+        finally:
+            if pubsub is not None:
+                try:
+                    await pubsub.unsubscribe("ws:channel:updates")
+                except Exception:
+                    pass
+                try:
+                    await pubsub.reset()
+                except Exception:
+                    pass
 
 
-@router.websocket("/ws/live")
+@router.websocket("/ws/v1/live")
 async def websocket_live(ws: WebSocket):
-    """WebSocket 端点：接受客户端连接，处理 ping/pong 心跳保持连接"""
     await ws.accept()
     _connections.add(ws)
     await _ensure_listener()

@@ -14,11 +14,11 @@ from dataclasses import dataclass
 
 @dataclass
 class TradeConfig:
-    symbol: str = os.getenv("TRADE_SYMBOL", "BTC/USDT:USDT")
-    leverage: int = int(os.getenv("TRADE_LEVERAGE", "1"))
+    symbol: str = os.getenv("TRADE_SYMBOL", "DOGE/USDT:USDT")
+    leverage: int = int(os.getenv("TRADE_LEVERAGE", "10"))
     timeframe: str = "1h"
     data_points: int = 168
-    tick_interval_seconds: int = 180  # 3 分钟
+    tick_interval_seconds: int = 360  # 6 分钟
     order_amount: float = 1.0
     max_position_ratio: float = 0.8
     max_daily_drawdown_pct: float = float(os.getenv("MAX_DAILY_DRAWDOWN_PCT", "10.0"))

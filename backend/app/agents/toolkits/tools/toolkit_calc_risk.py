@@ -37,9 +37,10 @@ def calc_max_position(confidence: str, atr_pct: float) -> str:
 
 
 def calc_sl_tp(direction: str, atr_pct: float) -> str:
-    """根据方向和波动率计算止损止盈。"""
+    """根据方向和波动率计算止损止盈（短线参数）。"""
     pr, atr = _price(), float(atr_pct)
-    sl_pct = min(max(atr * 1.5, 0.5), 5.0); tp_pct = min(max(atr * 3.0, 1.0), 8.0)
+    sl_pct = min(max(atr * 0.8, 0.3), 3.0)   # 短线：止损 0.3%~3%
+    tp_pct = min(max(atr * 1.5, 0.6), 5.0)   # 短线：止盈 0.6%~5%
     if direction.lower() == "long": sl, tp = pr * (1 - sl_pct / 100), pr * (1 + tp_pct / 100)
     else: sl, tp = pr * (1 + sl_pct / 100), pr * (1 - tp_pct / 100)
     return f"方向{direction.upper()} | 止损${sl:.0f}({sl_pct:.1f}%) | 止盈${tp:.0f}({tp_pct:.1f}%) | 盈亏比1:{tp_pct / sl_pct:.1f}"

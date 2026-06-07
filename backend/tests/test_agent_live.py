@@ -18,11 +18,11 @@ class TestAgentLive:
         exchange = ExchangeClient()
 
         # 直接调底层 ccxt，不走 MarketDataService
-        df = await exchange.fetch_ohlcv("BTC/USDT:USDT", "1m", 200)
-        ticker = await exchange.fetch_ticker("BTC/USDT:USDT")
+        df = await exchange.fetch_ohlcv("DOGE/USDT:USDT", "1m", 200)
+        ticker = await exchange.fetch_ticker("DOGE/USDT:USDT")
         price = ticker.get("last", 0) or ticker.get("close", 0)
         balance = await exchange.fetch_balance()
-        positions = await exchange.fetch_positions(["BTC/USDT:USDT"])
+        positions = await exchange.fetch_positions(["DOGE/USDT:USDT"])
 
         equity = float(balance.get("USDT", {}).get("total", 10000) or 10000)
         pos = None

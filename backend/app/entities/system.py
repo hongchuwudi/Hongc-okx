@@ -14,8 +14,8 @@ from sqlalchemy import Column, DateTime, Float, Integer, String, Text
 from app.entities import Base
 
 
+# 系统状态 — 单行表，记录引擎当前运行状态和最新数据
 class SystemStatus(Base):
-    """系统状态 — 单行表，记录引擎当前运行状态和最新数据"""
     __tablename__ = "system_status"
 
     # 主键（固定为 1，单行模式）
@@ -46,6 +46,16 @@ class SystemStatus(Base):
     position_entry_price = Column(Float, default=0)
     # 持仓未实现盈亏
     position_unrealized_pnl = Column(Float, default=0)
+    # 持仓标记价格
+    position_mark_price = Column(Float, default=0)
+    # 持仓盈亏百分比
+    position_pnl_pct = Column(Float, default=0)
+    # 持仓保证金
+    position_margin = Column(Float, default=0)
+    # 持仓名义价值
+    position_notional = Column(Float, default=0)
+    # 持仓强平价格
+    position_liquidation_price = Column(Float, default=0)
     # AI 最新信号
     ai_signal = Column(String(10), default="HOLD")
     # AI 信心水平
@@ -56,6 +66,8 @@ class SystemStatus(Base):
     ai_stop_loss = Column(Float, default=0)
     # AI 建议止盈价
     ai_take_profit = Column(Float, default=0)
+    # Agent 模式标识
+    agent_mode = Column(String(20), default="")
     # AI 决策时间
     ai_timestamp = Column(DateTime)
     # 止损算法订单 ID

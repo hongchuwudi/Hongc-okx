@@ -14,8 +14,8 @@ from sqlalchemy import Column, DateTime, Float, Integer, String, Text
 from app.entities import Base
 
 
+# 回测运行记录 — 存储每次回测的参数、性能指标和结果
 class BacktestRun(Base):
-    """回测运行记录 — 存储每次回测的参数、性能指标和结果"""
     __tablename__ = "backtest_runs"
 
     # 主键

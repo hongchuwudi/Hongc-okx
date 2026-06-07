@@ -13,8 +13,8 @@ from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean
 from app.entities import Base
 
 
+# 单条交易记忆 — AI 的一次决策 + 结果
 class TradeMemory(Base):
-    """单条交易记忆 — AI 的一次决策 + 结果"""
     __tablename__ = "trade_memories"
 
     # 主键

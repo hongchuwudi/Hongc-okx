@@ -10,16 +10,19 @@
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, Text, DateTime
 
 from app.entities import Base
 
 
+# 系统运行配置，以 JSON 字符串存储所有交易参数。
 class SystemConfig(Base):
-    """系统运行配置，以 JSON 字符串存储所有交易参数。"""
 
     __tablename__ = "system_config"
 
+    # 主键
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # JSON 配置字符串，存储全部交易参数
     config_json = Column(Text, nullable=False, default="{}")
+    # 最后更新时间
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

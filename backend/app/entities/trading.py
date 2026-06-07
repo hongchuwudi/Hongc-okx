@@ -15,8 +15,8 @@ from sqlalchemy import Column, DateTime, Float, Integer, String, Text
 from app.entities import Base
 
 
+# 交易记录 — 存储每笔交易的详细数据
 class Trade(Base):
-    """交易记录 — 存储每笔交易的详细数据"""
     __tablename__ = "trades"
 
     # 主键
@@ -39,8 +39,8 @@ class Trade(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+# 权益快照 — 记录各时间点的账户权益，用于生成权益曲线
 class EquitySnapshot(Base):
-    """权益快照 — 记录各时间点的账户权益，用于生成权益曲线"""
     __tablename__ = "equity_snapshots"
 
     # 主键

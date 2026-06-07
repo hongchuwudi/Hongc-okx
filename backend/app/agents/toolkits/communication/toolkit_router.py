@@ -20,8 +20,8 @@ from app.agents.toolkits.communication.toolkit_dialogue import ASK_SIGNAL
 from app.logger import get_logger
 
 logger = get_logger()
-MAX_ASK_ROUNDS = 3
-MAX_DIALOGUE_TOTAL = 10
+MAX_ASK_ROUNDS = 2
+MAX_DIALOGUE_TOTAL = 6
 
 
 def last_content(result: dict) -> str:

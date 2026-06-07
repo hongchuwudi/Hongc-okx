@@ -19,10 +19,10 @@ def get_trader_llm() -> ChatOpenAI:
     global _llm
     if _llm is None:
         _llm = ChatOpenAI(
-            model="deepseek-reasoner",
+            model="deepseek-v4-flash",
             api_key=config.ai.deepseek_api_key,
             base_url=config.ai.deepseek_base_url,
             temperature=0.2,
-            max_tokens=1200,
+            max_tokens=2000,
         )
     return _llm

@@ -19,7 +19,7 @@ def get_risk_llm() -> ChatOpenAI:
     global _llm
     if _llm is None:
         _llm = ChatOpenAI(
-            model="deepseek-chat",
+            model="deepseek-v4-flash",
             api_key=config.ai.deepseek_api_key,
             base_url=config.ai.deepseek_base_url,
             temperature=0.1,

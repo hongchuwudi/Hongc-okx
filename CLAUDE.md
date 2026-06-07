@@ -6,7 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BTC/USDT perpetual futures auto-trading bot for OKX. Uses DeepSeek AI with a Supervisor multi-agent architecture (LangGraph StateGraph) to analyze OHLCV market data and generate trading signals (BUY/SELL/HOLD), executes trades with automatic algorithm stop-loss/take-profit orders, and serves a React web dashboard for real-time monitoring.
+OKX 永续合约 AI 自动交易系统 (DOGE/USDT:USDT 默认)。5 Agent Swarm 架构 + DeepSeek V4-Flash + React 仪表盘。
+
+**当前配置 (2026-06-07):**
+- 交易对: DOGE/USDT:USDT
+- 杠杆: 10x
+- Tick: 6 分钟
+- 止损: ATR × 0.8 (短线 0.3%~3%)
+- 止盈: ATR × 1.5 (短线 0.6%~5%)
+- 盈亏比: 2:1
+- 模型: deepseek-v4-flash × 5
+- 测试: 41 个全绿, 端到端 42s 通过
 
 ## Commands
 
@@ -37,71 +47,43 @@ cd frontend && npm run build
 backend/
   run.py                  Unified launcher (FastAPI thread + TradingEngine asyncio)
   app/
-    config.py             Unified config from .env (Postgres, Redis, OKX, AI, Trade params)
-    database.py           PostgreSQL (SQLAlchemy sync+async) + Redis connection pools
+    config/               Split config: postgres/redis/okx/ai/trade + AppConfig
+    database/              Split: PG (sync+async) + Redis (pool+pubsub)
     logger.py             Logging module (console + rotating file)
-    engine/loop.py        TradingEngine — event-driven main loop, one tick per minute
-    exchange/client.py    OKX exchange client (CCXT wrapper)
-    models/
-      __init__.py         SQLAlchemy Base + re-exports
-      system.py           SystemStatus — single-row table for current state
-      trading.py          Trade + EquitySnapshot — trade records and equity history
-      memory.py           TradeMemory — AI decision history for replay analysis
-      backtest.py         BacktestRun — backtest execution records
-    services/
-      market_data.py      OHLCV, price, account, position fetching with Redis cache
-      risk.py             Risk checks (daily drawdown, daily loss, circuit breaker)
-      scheduler.py        Time-aligned tick scheduler
-      strategy.py         StrategyService — strategy execution
-      trade.py            TradeService — order execution with algo SL/TP
-    strategies/
-      base.py             BaseStrategy abstract class
-      deepseek.py         DeepSeek AI strategy (technical indicators + market sentiment + LLM)
-      technical.py        Technical indicator strategy (SMA + RSI + MACD)
+    engine/loop.py        TradingEngine main loop, one tick per 6min
+    exchange/             Split: base.py + okx/ (market/account/trade/setup) + client.py facade
+    entities/             SQLAlchemy ORM: SystemStatus/Trade/EquitySnapshot/TradeMemory/BacktestRun/SystemConfig
+    services/             MarketData/Risk/Scheduler/Strategy/Trade + ConfigService
+    strategies/           TechnicalStrategy + DeepSeekStrategy
     agents/
-      coordinator.py      AgentCoordinator — thin wrapper, calls Supervisor graph
-      graph.py            LangGraph StateGraph builder + router
-      shared.py           SupervisorState TypedDict + LLM singleton
-      schemas.py          Pydantic models (Signal, Confidence, AgentReport, TradeDecision)
-      parser.py           Centralized JSON parser + AgentReport converter
-      formats.py          Market/position/memory text formatters
-      indicator_service.py  Unified technical indicator calculations
-      position_manager.py   Dynamic trailing stop / TP-SL manager
-      prompts/            One file per agent role:
-        supervisor.py     Supervisor scheduling prompt
-        market.py         Market analyst prompt
-        risk.py           Risk manager prompt
-        memory.py         Memory/replay analyst prompt
-        trader.py         Final decision trader prompt
-      nodes/              One file per LangGraph node:
-        supervisor.py     supervisor_node — dynamic agent routing
-        market.py         market_node — technical analysis
-        risk.py           risk_node — risk assessment
-        memory.py         memory_node — historical review
-        trader.py         trader_node — final decision synthesis
+      coordinator.py      5 Agent Swarm main pipeline (asyncio event-driven)
+      agent_factory.py    5 Agent build logic (model+tool+prompt assembly)
+      agent_logger.py     ToolCallLogger — intercept tool calls + push to status bus
+      agent_status.py     Agent status bus — Redis Pub/Sub + in-memory for REST API
+      models/             5 LLM instances: model_scheduler/analyst/reviewer/risk/trader
+      prompts/            5 prompts: prompt_scheduler/analyst/reviewer/risk/trader
+      toolkits/
+        tools/            Pure calc: indicators/position/risk/memory/memory_private/feedback
+        communication/    Swarm: handoff (transfer_to_X) + dialogue (ask_X) + router
+        toolkit_*.py      Glue: lc_tool() wraps calc functions → exports tools=[]
+      parser.py           JSON parser
+      position_manager.py Dynamic trailing stop / TP-SL
     api/
-      main.py             FastAPI app v2.0 (CORS, static files for production)
-      ws.py               WebSocket manager — Redis Pub/Sub → browser real-time push
+      main.py             FastAPI v2.0 (CORS + static + routes)
+      ws.py               WebSocket: Redis Pub/Sub → browser push
       routes/
         dashboard.py      /api/status, /api/health, /api/equity, /api/kline
-        trades.py          /api/trades (flat array with ?limit= or paginated with ?page=&page_size=)
-        strategies.py     /api/strategies (static strategy list)
-        backtest.py       /api/backtest — backtest run + list + detail
-    memory/
-      store.py            MemoryStore — PostgreSQL-backed AI decision memory
-    backtest/
-      engine.py           BacktestEngine — historical data replay
-  legacy/                 v1.0 monolithic archive (Streamlit + SQLite + JSON files)
-                          See legacy/README.md — NOT used by current system
+        trades.py         /api/trades
+        strategies.py     /api/strategies
+        backtest.py       /api/backtest
+        agents.py         /api/agents/status — Agent real-time status
+        config.py         /api/config — dynamic config CRUD
+    memory/store.py       MemoryStore — AI decision history
+    backtest/engine.py    BacktestEngine
+  legacy/                 v1.0 archive — NOT used
+  tests/                  41 tests: calc/handoff/dialogue/memory/factory/integration/config/live
 
-frontend/                 React 18 + TypeScript + Vite + ECharts dashboard
-  src/
-    App.tsx               Main dashboard layout
-    context/              DashboardContext — global state + auto-refresh
-    components/           PageHeader, KpiGrid, EquityChart, KlineChart,
-                          AgentOffice, ActiveTradePanel, BacktestPanel, etc.
-    lib/api.ts            API client (fetchStatus, fetchTrades, fetchEquity, fetchAll)
-    types/dashboard.ts    TypeScript interfaces
+frontend/                 React 18 + TypeScript + Vite + ECharts
 ```
 
 ## Key Configuration
@@ -245,71 +227,44 @@ coordinator 每 tick:
   4. @tool → calc 函数 → toolkit_data._df() → pandas 真实计算 → 返回字符串
 ```
 
-## Known Gaps: 伪多 Agent → 真多 Agent 升级路线
+## Known Gaps
 
-> 注：Phase 1（工具独立化）已完成。每个 Agent 通过 `create_react_agent` + 真实计算的 @tool 实现 Function Calling。
+当前 v2.0 已完成全部 Phase 1-3：
 
-### 现状（v2.0）
+| 维度 | 状态 |
+|------|:---:|
+| 独立工具 + 真实计算 | ✅ toolkit_calc_*.py |
+| Agent 互问 (transfer_to_X / ask_X) | ✅ toolkit_dialogue.py + toolkit_handoff.py |
+| 风控退回重做 (最多2次) | ✅ coordinator.py _handle_asks + redo loop |
+| PG 持久化私有记忆 (+ 内存降级) | ✅ toolkit_memory_private.py |
+| 自适应准确率 (check_my_accuracy) | ✅ toolkit_memory_private.py |
+| 学习闭环 (每 tick 反馈上一轮对错) | ✅ toolkit_calc_feedback.py |
+| 状态总线 (Redis Pub/Sub → WebSocket) | ✅ agent_status.py + agent_logger.py |
+| REST API (GET /api/agents/status) | ✅ api/routes/agents.py |
+| 动态配置 (PG 存储 + API 修改) | ✅ services/config_service.py |
 
-当前已完成：
-- Agent 有独立工具 ✓（`toolkits/` 三层架构）
-- 工具做真实计算 ✓（pandas/numpy，不读预计算缓存）
-- 每个 Agent 有 React 循环 ✓（`create_react_agent` 的 ToolNode）
+仍缺失: MCP 远程工具调用、前端 Agent 监控 UI、LangGraph Send API 自由对话。
 
-**仍缺失：**
-
-| 维度 | 现状 | 真多 Agent 该有的 |
-|------|------|-------------------|
-| 通信 | 读写共享 State 字典 | Agent 间互相发消息/事件 |
-| 路由 | 固定图结构 | 根据内容动态决定下一个找谁 |
-| 记忆 | 每个 tick 从零开始 | 每个 Agent 有自己的持久化信念 |
-| 退回 | 下游没法让上游重做 | 风控觉得分析师不足，可退回去要求重做 |
-
-### 现状（v2.0）
-
-当前架构本质是 **多角色 Prompt Chain**，不是真正的多 Agent：
+## Git History (2026-06-07)
 
 ```
-N 个 LLM 调用 × 不同 system prompt × 共享一个 TypedDict
+d62d6ed 优化: DOGE/USDT:USDT 默认交易对 + 短线参数 + 10x杠杆
+1ed32ab 优化: 预注入行情数据, 225s→47s 5x提速
+cabe60c 模型升级: deepseek-chat/reasoner → deepseek-v4-flash
+63a4d2e 修复: 配置拆分后 .env 变量名对齐 + 新增配置验证测试
+e42e1f2 新增: 集成测试 — Coordinator/移交/对话/反馈/退回
+532ae10 新增: 测试框架 + 24 个测试用例全部通过
+dc6db55 新增: 系统配置动态管理 (PG存储 + API修改)
+db73e8d 拆分: config.py → config/ 子模块
+a7d8e33 拆分: database.py → database/ 子模块
+b52cd0f 拆分: exchange/client.py → okx/ 子模块
+751b264 重命名: app/models/ → app/entities/ (ORM实体)
+c1049de 规范: agent_logger/agent_status 移出 toolkits 目录
+0c4bf8a 修复: agent_tool_call 接入状态总线
+1260209 新增: Agent 状态总线 (Redis Pub/Sub → WebSocket)
+90a1725 新增: GET /api/agents/status REST 接口
+522706c 重构: 5 Agent Swarm 架构 (独立模型/线程/工具/记忆/通信)
 ```
-
-**缺失的核心能力：**
-
-| 维度 | 现状 | 真多 Agent 该有的 |
-|------|------|-------------------|
-| 通信 | 读写共享 State 字典 | Agent 间互相发消息/事件，可指定接收者 |
-| 对话 | 固定流水线，一次过 | 可多轮对话：A 问 B，B 答，A 不满意可追问 |
-| 路由 | 固定图结构 | 根据对话内容动态决定下一个找谁 |
-| 记忆 | 每个 tick 从零开始 | 每个 Agent 有自己的持久化信念，跨 tick 保留 |
-| 工具 | 共用格式化文本 | 每个 Agent 自己调不同的工具/API |
-| 退回 | 下游没法让上游重做 | 风控觉得分析师不足，可退回去要求重做 |
-| 不同意 | 下游只能忽略上游 | 可显式驳回，记录分歧 |
-
-### 升级路线（建议下次新会话实施）
-
-**Phase 1: 工具独立化** — 每个 Agent 配自己的 tool
-- 技术分析师调用 `calculate_rsi()`, `calculate_macd()` 等
-- 环境分析师调用 `fetch_funding_rate()`, `fetch_volume_profile()`
-- 形态分析师调用 `query_memory_store()` 查历史
-- prompt 里去掉预先格式化的数据，改为让 Agent 自己调函数获取
-
-**Phase 2: Agent 间消息通信** — 用 LangGraph Send API 或自建消息总线
-- 替换 TypedDict → 消息对象（sender, receiver, content, type）
-- Agent 可以主动 Push 消息给特定 Agent（不只是被动等下游读）
-- 支持 request/reply 模式：A 向 B 提问题，B 回答后回传给 A
-
-**Phase 3: 动态路由 + 信念持久化**
-- 风控师可以退回分析师报告，触发"重做"边
-- 每个 Agent 有自己的 SQLite/PG 表存信念状态
-- 跨 tick 记忆："上轮我认为会涨，实际跌了，教训是..."
-
-### 参考项目
-
-搜索时发现的相关架构可参考：
-- [NOFX](https://github.com/SkywalkerJi/nofx) — Web UI 策略构建器 + AI 辩论模式
-- [Alpha Arena](https://github.com/AmadeusGB/alpha-arena) — 多 LLM 同条件 PK 对比框架
-- [OKX Agent Trade Kit](https://github.com/okx/agent-trade-kit) — OKX 官方 MCP 协议工具包
-- 百度开发者平台《基于 LangGraph 构建多智能体交易决策系统》— Send API 动态路由参考
 
 ## Comment Standards
 

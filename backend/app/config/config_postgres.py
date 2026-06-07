@@ -19,6 +19,8 @@ class PostgresConfig:
     user: str = os.getenv("PG_USER", "postgres")
     password: str = os.getenv("PG_PASSWORD", "")
     database: str = os.getenv("PG_DATABASE", "trading")
+    pool_size: int = int(os.getenv("PG_POOL_SIZE", "10"))
+    max_overflow: int = int(os.getenv("PG_MAX_OVERFLOW", "20"))
 
     @property
     def url(self) -> str:

@@ -14,5 +14,13 @@ from dataclasses import dataclass
 
 @dataclass
 class RedisConfig:
-    url: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+    host: str = os.getenv("REDIS_HOST", "127.0.0.1")
+    port: int = int(os.getenv("REDIS_PORT", "6379"))
+    password: str = os.getenv("REDIS_PASSWORD", "")
+    db: int = int(os.getenv("REDIS_DB", "0"))
     max_connections: int = int(os.getenv("REDIS_MAX_CONNECTIONS", "10"))
+
+    @property
+    def url(self) -> str:
+        auth = f":{self.password}@" if self.password else ""
+        return f"redis://{auth}{self.host}:{self.port}/{self.db}"

@@ -14,11 +14,11 @@ from dataclasses import dataclass
 
 @dataclass
 class PostgresConfig:
-    host: str = os.getenv("PG_HOST", "127.0.0.1")
-    port: int = int(os.getenv("PG_PORT", "5432"))
-    user: str = os.getenv("PG_USER", "postgres")
-    password: str = os.getenv("PG_PASSWORD", "")
-    database: str = os.getenv("PG_DATABASE", "trading")
+    host: str = os.getenv("POSTGRES_HOST", "127.0.0.1")
+    port: int = int(os.getenv("POSTGRES_PORT", "5432"))
+    user: str = os.getenv("POSTGRES_USER", "postgres")
+    password: str = os.getenv("POSTGRES_PASSWORD", "")
+    database: str = os.getenv("POSTGRES_DB", "trading")
     pool_size: int = int(os.getenv("PG_POOL_SIZE", "10"))
     max_overflow: int = int(os.getenv("PG_MAX_OVERFLOW", "20"))
 

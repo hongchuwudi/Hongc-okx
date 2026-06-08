@@ -19,3 +19,4 @@ class AIConfig:
     deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     qwen_api_key: str = os.getenv("DASHSCOPE_API_KEY", "")
     qwen_base_url: str = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    cryptoracle_api_key: str = os.getenv("CRYPTORACLE_API_KEY", "")

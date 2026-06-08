@@ -16,6 +16,7 @@ from dataclasses import dataclass
 class OKXConfig:
     sandbox: bool = os.getenv("OKX_SANDBOX", "true").lower() == "true"
     proxy: str | None = os.getenv("HTTPS_PROXY")
+    proxy_backup: str | None = os.getenv("HTTPS_PROXY_BACKUP")
 
     @property
     def api_key(self) -> str:

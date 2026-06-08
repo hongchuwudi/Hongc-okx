@@ -23,3 +23,5 @@ class TradeConfig:
     max_position_ratio: float = 0.8
     max_daily_drawdown_pct: float = float(os.getenv("MAX_DAILY_DRAWDOWN_PCT", "10.0"))
     max_daily_loss_usdt: float = float(os.getenv("MAX_DAILY_LOSS_USDT", "50.0"))
+    agent_auto_start: bool = os.getenv("AGENT_AUTO_START", "true").lower() in ("true", "1", "yes")
+    agent_mode: str = os.getenv("AGENT_MODE", "5_agent")  # "5_agent" | "3_agent"

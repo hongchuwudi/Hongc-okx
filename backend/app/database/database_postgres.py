@@ -32,8 +32,8 @@ _sync_engine = create_engine(
 SyncSession = sessionmaker(bind=_sync_engine, autocommit=False, autoflush=False)
 
 
+# 获取同步数据库会话。
 def get_sync_session() -> Session:
-    """获取同步数据库会话。"""
     return SyncSession()
 
 
@@ -48,7 +48,7 @@ _async_engine = create_async_engine(
 AsyncSessionLocal = async_sessionmaker(bind=_async_engine, class_=AsyncSession, expire_on_commit=False)
 
 
+# 获取异步数据库会话（FastAPI 依赖注入）。
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    """获取异步数据库会话（FastAPI 依赖注入）。"""
     async with AsyncSessionLocal() as session:
         yield session

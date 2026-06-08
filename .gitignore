@@ -11,6 +11,7 @@ dist/
 !frontend/dist/
 build/
 legacy/
+temp/
 
 # 运行时数据
 data/
@@ -30,6 +31,12 @@ frontend/node_modules/
 # Claude Code
 .claude/
 
+# 测试报告（仅保留 .gitkeep）
+backend/tests/reports/*
+!backend/tests/reports/.gitkeep
+.coverage
+.coverage.*
+
 # 数据库文件
 *.db
 *.sqlite
@@ -43,3 +50,5 @@ frontend/tsconfig.tsbuildinfo
 Thumbs.db
 *.swp
 *.swo
+
+path/to/*

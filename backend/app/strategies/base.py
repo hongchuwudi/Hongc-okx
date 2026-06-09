@@ -14,15 +14,16 @@ from typing import Dict, Optional
 import pandas as pd
 
 
+# 所有交易策略必须实现的抽象基类
 class BaseStrategy(ABC):
-    """所有交易策略必须实现的抽象基类"""
 
+    # 策略名称（只读属性）
     @property
     @abstractmethod
     def name(self) -> str:
-        """策略名称（只读属性）"""
         ...
 
+    # 根据 OHLCV 数据生成交易信号。 Returns: { "signal": "BUY" | "SELL" | "HOLD", "confidence": "HIGH" | "MEDIUM" | "LOW", "reason": str, "stop_loss": float, "take_profit": float, }
     @abstractmethod
     def generate_signal(
         self,
@@ -30,16 +31,4 @@ class BaseStrategy(ABC):
         current_position: Optional[Dict] = None,
         **kwargs,
     ) -> Dict:
-        """
-        根据 OHLCV 数据生成交易信号。
-
-        Returns:
-            {
-                "signal": "BUY" | "SELL" | "HOLD",
-                "confidence": "HIGH" | "MEDIUM" | "LOW",
-                "reason": str,
-                "stop_loss": float,
-                "take_profit": float,
-            }
-        """
         ...

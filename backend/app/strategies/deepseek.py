@@ -9,7 +9,6 @@
 """
 
 import json
-import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -18,16 +17,21 @@ import requests
 
 from app.config import config as app_config
 from app.strategies.base import BaseStrategy
-from app.agents.indicator_service import IndicatorService
-from app.agents.parser import parse_agent_json_output
-from app.logger import get_logger
+from app.strategies._strategy_helpers import (
+    safe_json_parse, fallback_signal, calc_dynamic_tp_sl,
+    validate_signal, generate_technical_analysis_text,
+)
+from app.strategies._strategy_indicator import (
+    calc_indicators, get_support_resistance_levels,
+    get_market_trend, identify_market_state,
+)
+from app.core.logger import get_logger
 
-# 获取日志记录器
 logger = get_logger()
 
 
+# DeepSeek AI 策略 — 调用大模型分析行情数据，结合技术指标生成交易信号
 class DeepSeekStrategy(BaseStrategy):
-    """DeepSeek AI 策略 — 调用大模型分析行情数据，结合技术指标生成交易信号"""
 
     def __init__(self, config: dict, openai_client, exchange=None):
         # 策略配置（含交易对、时间周期等）
@@ -40,22 +44,47 @@ class DeepSeekStrategy(BaseStrategy):
         self.signal_history: List[Dict] = []
         # Cryptoracle 情绪指标 API Key
         self._sentiment_api_key = app_config.ai.cryptoracle_api_key
+        # 连续失败计数 — 超过阈值跳过重试避免日志刷屏
+        self._consecutive_failures = 0
+        # 回测模式：每 N 根 K 线调一次 API，其余复用上次信号
+        self._backtest = config.get("backtest", False)
+        self._bt_interval = config.get("backtest_interval", 20)
+        self._bt_bar = 0
+        self._bt_last_signal: Dict = {}
 
     @property
     def name(self) -> str:
         return "DeepSeekStrategy"
 
+    # 生成交易信号（带自动重试）
     def generate_signal(
         self,
         df: pd.DataFrame,
         current_position: Optional[Dict] = None,
         **kwargs,
     ) -> Dict:
-        """生成交易信号（带自动重试）"""
+        # 回测模式：每 N 根 K 线调一次 API，其余复用上次信号
+        if self._backtest:
+            self._bt_bar += 1
+            price = float(df["close"].iloc[-1])
+            if self._bt_bar % self._bt_interval == 0 or not self._bt_last_signal:
+                self._bt_last_signal = self._analyze_with_retry(df, current_position)
+            # 复用上次信号，但用当前价格更新 SL/TP
+            sig = dict(self._bt_last_signal)
+            if sig.get("signal") == "BUY":
+                sig["stop_loss"] = price * 0.97
+                sig["take_profit"] = price * 1.04
+            elif sig.get("signal") == "SELL":
+                sig["stop_loss"] = price * 1.03
+                sig["take_profit"] = price * 0.96
+            else:
+                sig["stop_loss"] = price * 0.98
+                sig["take_profit"] = price * 1.02
+            return sig
         return self._analyze_with_retry(df, current_position)
 
+    # 从交易所获取当前实时持仓
     def get_current_position(self) -> Optional[Dict]:
-        """从交易所获取当前实时持仓"""
         if self.exchange is None:
             return None
         try:
@@ -77,8 +106,8 @@ class DeepSeekStrategy(BaseStrategy):
             logger.info(f"获取持仓失败: {e}")
             return None
 
+    # 构建包含价格、技术指标、趋势分析的完整数据字典
     def _build_price_data(self, df: pd.DataFrame) -> dict:
-        """构建包含价格、技术指标、趋势分析的完整数据字典"""
         df = self._calc_indicators(df)
         last = df.iloc[-1]
         prev = df.iloc[-2]
@@ -113,20 +142,18 @@ class DeepSeekStrategy(BaseStrategy):
             "full_data": df,                                           # 完整 DataFrame
         }
 
-    def _calc_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """计算所有技术指标"""
-        return IndicatorService.calculate_all(df)
+    # 计算所有技术指标
+    def _calc_indicators(self, df):
+        return calc_indicators(df)
 
     def _get_support_resistance_levels(self, df, lookback=20):
-        """获取支撑阻力位"""
-        return IndicatorService.support_resistance(df, lookback)
+        return get_support_resistance_levels(df, lookback)
 
     def _get_market_trend(self, df):
-        """获取市场趋势分析"""
-        return IndicatorService.trend_analysis(df)
+        return get_market_trend(df)
 
+    # 从 Cryptoracle API 获取市场情绪指标
     def _get_sentiment(self):
-        """从 Cryptoracle API 获取市场情绪指标"""
         try:
             end_time = datetime.now()
             start_time = end_time - timedelta(hours=4)
@@ -170,172 +197,47 @@ class DeepSeekStrategy(BaseStrategy):
             logger.info(f"情绪指标获取失败: {e}")
             return None
 
-    def _generate_technical_analysis_text(self, price_data) -> str:
-        """生成技术分析文本供 AI 阅读"""
-        if "technical_data" not in price_data:
-            return "技术指标数据不可用"
-        tech = price_data["technical_data"]
-        trend = price_data.get("trend_analysis", {})
-        levels = price_data.get("levels_analysis", {})
+    def _generate_technical_analysis_text(self, price_data):
+        return generate_technical_analysis_text(price_data)
 
-        def sf(v, d=0):
-            return float(v) if v and pd.notna(v) else d
-
-        return f"""
-【技术指标分析】
-📈 移动平均线:
-- 5周期: {sf(tech["sma_5"]):.2f} | 价格相对: {(price_data["price"] - sf(tech["sma_5"])) / sf(tech["sma_5"]) * 100:+.2f}%
-- 20周期: {sf(tech["sma_20"]):.2f} | 价格相对: {(price_data["price"] - sf(tech["sma_20"])) / sf(tech["sma_20"]) * 100:+.2f}%
-- 50周期: {sf(tech["sma_50"]):.2f} | 价格相对: {(price_data["price"] - sf(tech["sma_50"])) / sf(tech["sma_50"]) * 100:+.2f}%
-
-🎯 趋势分析:
-- 短期趋势: {trend.get("short_term", "N/A")}
-- 中期趋势: {trend.get("medium_term", "N/A")}
-- 整体趋势: {trend.get("overall", "N/A")}
-- MACD方向: {trend.get("macd", "N/A")}
-
-📊 动量指标:
-- RSI: {sf(tech["rsi"]):.2f} ({"超买" if sf(tech["rsi"]) > 70 else "超卖" if sf(tech["rsi"]) < 30 else "中性"})
-- MACD: {sf(tech["macd"]):.4f}
-- 信号线: {sf(tech["macd_signal"]):.4f}
-
-🎚️ 布林带位置: {sf(tech["bb_position"]):.2%} ({"上部" if sf(tech["bb_position"]) > 0.7 else "下部" if sf(tech["bb_position"]) < 0.3 else "中部"})
-
-💰 关键水平:
-- 静态阻力: {sf(levels.get("static_resistance", 0)):.2f}
-- 静态支撑: {sf(levels.get("static_support", 0)):.2f}
-"""
-
-    def _identify_market_state(self, price_data, tech_data) -> dict:
-        """识别当前市场状态（波动率、趋势阶段等）"""
-        return IndicatorService.market_state(price_data["full_data"])
+    def _identify_market_state(self, price_data, tech_data):
+        return identify_market_state(price_data, tech_data)
 
     def _calc_dynamic_tp_sl(self, signal, price, market_state, position=None):
-        """根据市场状态动态计算止盈止损价格"""
-        atr_pct = market_state.get("atr_pct", 2.0)
-        state = market_state.get("state", "")
-        # 根据波动率调整止盈止损比例
-        if state.startswith("高波动"):
-            sl_pct, tp_pct = 0.025, 0.06     # 高波动：宽止损宽止盈
-        elif state.startswith("低波动"):
-            sl_pct, tp_pct = 0.015, 0.03     # 低波动：窄止损窄止盈
-        else:
-            sl_pct, tp_pct = 0.02, 0.05      # 正常波动
-
-        # 根据信号方向计算止盈止损价
-        if signal == "BUY":
-            stop_loss = price * (1 - sl_pct)
-            take_profit = price * (1 + tp_pct)
-        elif signal == "SELL":
-            stop_loss = price * (1 + sl_pct)
-            take_profit = price * (1 - tp_pct)
-        else:
-            stop_loss = price * 0.98
-            take_profit = price * 1.02
-
-        # 持仓盈利 > 5% 时移动止损到保本+1%
-        if position and position.get("unrealized_pnl", 0) > 0:
-            ep = position.get("entry_price", price)
-            sz = position.get("size", 0)
-            if ep > 0 and sz > 0:
-                profit_pct = position["unrealized_pnl"] / (ep * sz * 0.01)
-                if profit_pct > 0.05:
-                    if position["side"] == "long":
-                        stop_loss = max(stop_loss, ep * 1.01)
-                    else:
-                        stop_loss = min(stop_loss, ep * 0.99)
-                    logger.info(f"盈利{profit_pct:.1%}，移动止损到保本+1%: {stop_loss:.2f}")
-        return {
-            "stop_loss": round(stop_loss, 2),
-            "take_profit": round(take_profit, 2),
-            "sl_pct": sl_pct,
-            "tp_pct": tp_pct,
-        }
+        return calc_dynamic_tp_sl(signal, price, market_state, position)
 
     def _validate_signal(self, ai_signal, price_data, tech_data):
-        """验证 AI 生成的信号，根据技术指标修正不合理之处"""
-        signal = ai_signal.get("signal", "HOLD")
-        tech = tech_data
-        rsi = tech.get("rsi", 50)
-        # RSI 超买时降低 BUY 信心
-        if rsi > 80 and signal == "BUY":
-            logger.warning("RSI超买(>80)，降低BUY信号信心")
-            ai_signal["confidence"] = "LOW"
-            ai_signal["reason"] += " [RSI超买警告]"
-        # RSI 超卖时降低 SELL 信心
-        if rsi < 20 and signal == "SELL":
-            logger.warning("RSI超卖(<20)，降低SELL信号信心")
-            ai_signal["confidence"] = "LOW"
-            ai_signal["reason"] += " [RSI超卖警告]"
-        # 趋势与信号冲突时转为 HOLD
-        trend = price_data.get("trend_analysis", {}).get("overall", "震荡整理")
-        conf = ai_signal.get("confidence", "MEDIUM")
-        if trend == "强势上涨" and signal == "SELL" and conf != "HIGH":
-            ai_signal["signal"] = "HOLD"
-            ai_signal["reason"] = "趋势与信号冲突，保持观望"
-            logger.info("信号已修正为HOLD")
-        if trend == "强势下跌" and signal == "BUY" and conf != "HIGH":
-            ai_signal["signal"] = "HOLD"
-            ai_signal["reason"] = "趋势与信号冲突，保持观望"
-            logger.info("信号已修正为HOLD")
-        # MACD 与信号方向不一致时降低信心
-        macd = tech.get("macd", 0)
-        macd_sig = tech.get("macd_signal", 0)
-        if macd > macd_sig and signal == "SELL":
-            logger.warning("MACD多头但信号SELL，降低信心")
-            if ai_signal.get("confidence") == "HIGH":
-                ai_signal["confidence"] = "MEDIUM"
-        if macd < macd_sig and signal == "BUY":
-            logger.warning("MACD空头但信号BUY，降低信心")
-            if ai_signal.get("confidence") == "HIGH":
-                ai_signal["confidence"] = "MEDIUM"
-        # 检查止盈止损价格合理性
-        price = price_data["price"]
-        if signal == "BUY":
-            if ai_signal.get("stop_loss", 0) >= price:
-                ai_signal["stop_loss"] = price * 0.98
-            if ai_signal.get("take_profit", 0) <= price:
-                ai_signal["take_profit"] = price * 1.03
-        elif signal == "SELL":
-            if ai_signal.get("stop_loss", 0) <= price:
-                ai_signal["stop_loss"] = price * 1.02
-            if ai_signal.get("take_profit", 0) >= price:
-                ai_signal["take_profit"] = price * 0.97
-        return ai_signal
+        return validate_signal(ai_signal, price_data, tech_data)
 
     def _safe_json_parse(self, text):
-        """安全解析 AI 输出的 JSON"""
-        return parse_agent_json_output(text)
+        return safe_json_parse(text)
 
-    def _fallback_signal(self, price) -> Dict:
-        """当 AI 分析失败时返回保守的默认信号"""
-        return {
-            "signal": "HOLD",
-            "reason": "因技术分析暂时不可用，采取保守策略",
-            "stop_loss": price * 0.98,
-            "take_profit": price * 1.02,
-            "confidence": "LOW",
-            "is_fallback": True,
-        }
+    def _fallback_signal(self, price):
+        return fallback_signal(price)
 
+    # 带重试机制的分析入口 — 连续失败 3 次后不再重试，直接 fallback
     def _analyze_with_retry(self, df: pd.DataFrame, position=None, max_retries=2) -> Dict:
-        """带重试机制的分析入口"""
+        if self._consecutive_failures >= 3:
+            return self._fallback_signal(float(df["close"].iloc[-1]))
+
         for attempt in range(max_retries):
             try:
                 result = self._analyze(df, position)
                 if result and not result.get("is_fallback"):
+                    self._consecutive_failures = 0
                     return result
-                logger.warning(f"第{attempt + 1}次尝试失败，进行重试...")
-            except Exception as e:
-                logger.warning(f"第{attempt + 1}次尝试异常: {e}")
-                if attempt == max_retries - 1:
-                    price = float(df["close"].iloc[-1])
-                    return self._fallback_signal(price)
-        price = float(df["close"].iloc[-1])
-        return self._fallback_signal(price)
+            except Exception:
+                pass
 
+        self._consecutive_failures += 1
+        if self._consecutive_failures == 1:
+            logger.warning(f"DeepSeek API 分析失败，已切换到 fallback 模式")
+        if self._consecutive_failures == 3:
+            logger.warning("DeepSeek API 连续 3 次失败，后续不再重试")
+        return self._fallback_signal(float(df["close"].iloc[-1]))
+
+    # 核心分析逻辑：构建 prompt，调用 AI，解析结果
     def _analyze(self, df: pd.DataFrame, position=None) -> Dict:
-        """核心分析逻辑：构建 prompt，调用 AI，解析结果"""
         price_data = self._build_price_data(df)
         tech_analysis = self._generate_technical_analysis_text(price_data)
 
@@ -363,7 +265,13 @@ class DeepSeekStrategy(BaseStrategy):
         # 当前持仓信息
         cur_pos = position or self.get_current_position()
         if cur_pos:
-            pos_text = f"{cur_pos['side']}仓, 数量: {cur_pos['size']}, 盈亏: {cur_pos['unrealized_pnl']:.2f}USDT"
+            # 回测引擎传入的 position 没有 unrealized_pnl，根据当前价格计算
+            upnl = cur_pos.get('unrealized_pnl')
+            if upnl is None:
+                ep = cur_pos['entry_price']
+                sz = cur_pos['size']
+                upnl = (price_data['price'] - ep) * sz if cur_pos['side'] == 'long' else (ep - price_data['price']) * sz
+            pos_text = f"{cur_pos['side']}仓, 数量: {cur_pos['size']}, 盈亏: {upnl:.2f}USDT"
         else:
             pos_text = "无持仓"
 
@@ -373,19 +281,18 @@ class DeepSeekStrategy(BaseStrategy):
         tp_sl_hint = f"建议止损±{suggested['sl_pct'] * 100:.1f}%, 止盈±{suggested['tp_pct'] * 100:.1f}%"
 
         # 加载 AI 记忆 — 让模型看到自己的历史决策和结果
-        from app.memory import memory_store
-        memory_context = memory_store.build_prompt_context(limit=10)
+        from app.services.memory.memory import memory_service
+        memory_context = memory_service.build_prompt_context(limit=10)
 
         # 构建完整的 AI prompt
+        symbol = self.config.get("symbol", "BTC/USDT:USDT").split("/")[0]
         prompt = f"""
-你是专业的BTC交易分析师。{self.config['timeframe']}周期分析：
+你是专业的{symbol}永续合约交易分析师，当前周期: {self.config['timeframe']}。
 
 {memory_context}
 
 【核心数据】
-
-【核心数据】
-价格: ${price_data['price']:,.2f} ({price_data['price_change']:+.2f}%)
+价格: ${price_data['price']:,.6f} ({price_data['price_change']:+.2f}%)
 市场状态: {market_state['state']} (波动率: {market_state['atr_pct']:.2f}%)
 趋势: {price_data['trend_analysis'].get('overall', 'N/A')}
 RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend_analysis'].get('macd', 'N/A')}
@@ -399,24 +306,24 @@ RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend
 {sentiment_text}
 
 【决策规则】
-1. 强趋势市场(均线多头/空头排列) → 跟随趋势 BUY/SELL
-2. 震荡市场(均线纠缠) → 等待突破 HOLD
-3. 反转信号 → 需2+指标确认
-4. RSI仅辅助，不作主要依据
-5. BTC偏多头，上涨趋势可积极
+1. 市场状态"偏多/强上涨" → BUY；"偏空/强下跌" → SELL
+2. 震荡+低波动 → HOLD 等待
+3. 短线(5m/15m)更激进，小幅趋势即可入场
+4. RSI > 75 超买谨慎追多，RSI < 25 超卖谨慎追空
+5. 回测模式下，适当增加交易频率以验证策略有效性
 
 【止盈止损】
 {tp_sl_hint}
-- 持仓盈利>5% → 移动止损到保本+1%
-- 持仓亏损>3% → 考虑止损
+- 盈利 > 5%: 移动止损到保本
+- 亏损 > 3%: 果断止损离场
 
 【输出格式】
-严格JSON格式：
+严格JSON，不要额外文字：
 {{
     "signal": "BUY|SELL|HOLD",
     "reason": "核心理由(30字内)",
-    "stop_loss": 具体价格数字,
-    "take_profit": 具体价格数字,
+    "stop_loss": 价格数字,
+    "take_profit": 价格数字,
     "confidence": "HIGH|MEDIUM|LOW"
 }}
 """
@@ -427,12 +334,12 @@ RSI: {price_data['technical_data'].get('rsi', 0):.1f} | MACD: {price_data['trend
                 messages=[
                     {
                         "role": "system",
-                        "content": f"您是专业交易员，专注{self.config['timeframe']}周期趋势分析。严格输出JSON格式，不要添加任何解释文字。",
+                        "content": f"你是{self.config.get('symbol', '').split('/')[0] if '/' in self.config.get('symbol', '') else ''}永续合约交易员。专注{self.config['timeframe']}周期。严格输出JSON，不加解释。",
                     },
                     {"role": "user", "content": prompt},
                 ],
                 stream=False,
-                temperature=0.1,
+                temperature=self.config.get("temperature", 0.1),
             )
 
             result = response.choices[0].message.content

@@ -13,16 +13,16 @@ from typing import List
 from app.exchange.base import BaseExchangeClient
 
 
+# OKX 账户接口。
 class OkxAccount(BaseExchangeClient):
-    """OKX 账户接口。"""
 
     def __init__(self, exchange):
         self._ex = exchange
 
+    # 获取账户余额。
     async def fetch_balance(self) -> dict:
-        """获取账户余额。"""
         return await self._run(self._ex.fetch_balance)
 
+    # 获取持仓列表。
     async def fetch_positions(self, symbols: List[str] | None = None) -> List[dict]:
-        """获取持仓列表。"""
         return await self._run(self._ex.fetch_positions, symbols)

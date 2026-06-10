@@ -11,19 +11,19 @@
 from app.exchange.base import BaseExchangeClient
 
 
+# OKX 模式管理接口。
 class OkxSetup(BaseExchangeClient):
-    """OKX 模式管理接口。"""
 
     def __init__(self, exchange):
         self._ex = exchange
 
+    # 设置持仓模式：单向(net_mode) 或 双向(long_short_mode)。
     async def set_position_mode(self, hedged: bool = False):
-        """设置持仓模式：单向(net_mode) 或 双向(long_short_mode)。"""
         pos_mode = "long_short_mode" if hedged else "net_mode"
         await self._run(lambda: self._ex.private_post_account_set_position_mode({"posMode": pos_mode}))
 
+    # 设置杠杆倍数（全仓模式）。
     async def set_leverage(self, symbol: str, leverage: int):
-        """设置杠杆倍数（全仓模式）。"""
         okx_symbol = symbol.replace("/", "-").replace(":USDT", "-SWAP")
         await self._run(lambda: self._ex.private_post_account_set_leverage(
             {"instId": okx_symbol, "lever": str(leverage), "mgnMode": "cross"}))

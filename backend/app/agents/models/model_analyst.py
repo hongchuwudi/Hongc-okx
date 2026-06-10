@@ -8,14 +8,17 @@
 - 函数: get_analyst_llm — 返回分析师 LLM 实例
 """
 
+import httpx
 from langchain_openai import ChatOpenAI
+
 from app.config import config
 
 _llm: ChatOpenAI | None = None
 
+_client = httpx.Client(proxy=None)  # 直连 DeepSeek，不走代理
 
+# 分析师模型：标准温度 + 800 token，输出含信号、趋势、证据。
 def get_analyst_llm() -> ChatOpenAI:
-    """分析师模型：标准温度 + 800 token，输出含信号、趋势、证据。"""
     global _llm
     if _llm is None:
         _llm = ChatOpenAI(
@@ -24,5 +27,6 @@ def get_analyst_llm() -> ChatOpenAI:
             base_url=config.ai.deepseek_base_url,
             temperature=0.3,
             max_tokens=800,
+            http_client=_client,
         )
     return _llm

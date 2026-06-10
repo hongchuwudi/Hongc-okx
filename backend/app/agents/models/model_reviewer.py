@@ -8,14 +8,17 @@
 - 函数: get_reviewer_llm — 返回复盘师 LLM 实例
 """
 
+import httpx
 from langchain_openai import ChatOpenAI
+
 from app.config import config
 
 _llm: ChatOpenAI | None = None
 
+_client = httpx.Client(proxy=None)
 
+# 复盘师模型：标准温度 + 500 token，输出经验教训。
 def get_reviewer_llm() -> ChatOpenAI:
-    """复盘师模型：标准温度 + 500 token，输出经验教训。"""
     global _llm
     if _llm is None:
         _llm = ChatOpenAI(
@@ -24,5 +27,6 @@ def get_reviewer_llm() -> ChatOpenAI:
             base_url=config.ai.deepseek_base_url,
             temperature=0.3,
             max_tokens=500,
+            http_client=_client,
         )
     return _llm

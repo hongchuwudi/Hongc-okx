@@ -8,14 +8,17 @@
 - 函数: get_scheduler_llm — 返回调度师 LLM 实例
 """
 
+import httpx
 from langchain_openai import ChatOpenAI
+
 from app.config import config
 
 _llm: ChatOpenAI | None = None
 
+_client = httpx.Client(proxy=None)
 
+# 调度师模型：轻量快速扫描市场状态，300 token 足够输出 JSON。
 def get_scheduler_llm() -> ChatOpenAI:
-    """调度师模型：轻量快速扫描市场状态，300 token 足够输出 JSON。"""
     global _llm
     if _llm is None:
         _llm = ChatOpenAI(
@@ -24,5 +27,6 @@ def get_scheduler_llm() -> ChatOpenAI:
             base_url=config.ai.deepseek_base_url,
             temperature=0.3,
             max_tokens=300,
+            http_client=_client,
         )
     return _llm

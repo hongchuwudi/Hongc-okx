@@ -8,14 +8,17 @@
 - 函数: get_trader_llm — 返回交易裁决员 LLM 实例
 """
 
+import httpx
 from langchain_openai import ChatOpenAI
+
 from app.config import config
 
 _llm: ChatOpenAI | None = None
 
+_client = httpx.Client(proxy=None)
 
+# 交易裁决员模型：deepseek-reasoner 深度推理，1200 token 完整决策链。
 def get_trader_llm() -> ChatOpenAI:
-    """交易裁决员模型：deepseek-reasoner 深度推理，1200 token 完整决策链。"""
     global _llm
     if _llm is None:
         _llm = ChatOpenAI(
@@ -24,5 +27,6 @@ def get_trader_llm() -> ChatOpenAI:
             base_url=config.ai.deepseek_base_url,
             temperature=0.2,
             max_tokens=2000,
+            http_client=_client,
         )
     return _llm

@@ -22,8 +22,8 @@ from app.agents.toolkits.toolkit_data import _df, _price
 
 
 def get_price() -> str:
-    """获取 BTC 当前价格。"""
-    return f"BTC 当前价格: ${_price():,.2f}"
+    """获取当前价格。"""
+    return f"当前价格: ${_price():,.2f}"
 
 
 def calc_rsi(period: int = 14) -> str:

@@ -18,14 +18,14 @@
 import pandas as pd
 
 
+# 静态方法集合，所有策略和 Agent 统一调用此处计算。
 class IndicatorService:
-    """静态方法集合，所有策略和 Agent 统一调用此处计算。"""
 
     # ── 完整指标 DataFrame ──────────────────────────────────
 
+    # 对 OHLCV DataFrame 计算全部技术指标，返回增强后的 DataFrame。
     @staticmethod
     def calculate_all(df: pd.DataFrame) -> pd.DataFrame:
-        """对 OHLCV DataFrame 计算全部技术指标，返回增强后的 DataFrame。"""
         df = df.copy()
         # 移动平均线
         df["sma_5"] = df["close"].rolling(window=5, min_periods=1).mean()
@@ -63,9 +63,9 @@ class IndicatorService:
 
     # ── 单值查询 ─────────────────────────────────────────────
 
+    # 返回最后一根 K 线的指标快照字典。
     @staticmethod
     def latest_indicators(df: pd.DataFrame) -> dict:
-        """返回最后一根 K 线的指标快照字典。"""
         row = df.iloc[-1]
         return {
             "sma_5": float(row.get("sma_5", 0) or 0),  # 5 期 SMA
@@ -81,9 +81,9 @@ class IndicatorService:
             "volume_ratio": float(row.get("volume_ratio", 0) or 0),  # 量比
         }
 
+    # ATR 占当前价格的百分比。
     @staticmethod
     def atr_pct(df: pd.DataFrame, period: int = 14) -> float:
-        """ATR 占当前价格的百分比。"""
         # 计算真实波幅 TR
         tr = pd.concat([
             df["high"] - df["low"],  # 当日最高-最低
@@ -94,9 +94,9 @@ class IndicatorService:
         price = df["close"].iloc[-1]
         return float((atr / price) * 100) if price > 0 else 2.0
 
+    # 简易 RSI 值。
     @staticmethod
     def calc_rsi(df: pd.DataFrame, period: int = 14) -> float:
-        """简易 RSI 值。"""
         try:
             delta = df["close"].diff()
             gain = delta.where(delta > 0, 0.0).rolling(period).mean()
@@ -108,9 +108,9 @@ class IndicatorService:
 
     # ── 趋势分析 ─────────────────────────────────────────────
 
+    # 返回趋势分析字典（兼容现有使用方）。
     @staticmethod
     def trend_analysis(df: pd.DataFrame) -> dict:
-        """返回趋势分析字典（兼容现有使用方）。"""
         try:
             last = df.iloc[-1]
             price = float(last["close"])
@@ -142,9 +142,9 @@ class IndicatorService:
 
     # ── 支撑阻力 ─────────────────────────────────────────────
 
+    # 静态 + 动态（布林带）支撑阻力。
     @staticmethod
     def support_resistance(df: pd.DataFrame, lookback: int = 20) -> dict:
-        """静态 + 动态（布林带）支撑阻力。"""
         try:
             recent_high = float(df["high"].tail(lookback).max())  # 近期最高价（静态阻力）
             recent_low = float(df["low"].tail(lookback).min())  # 近期最低价（静态支撑）
@@ -164,9 +164,9 @@ class IndicatorService:
 
     # ── 市场状态 ─────────────────────────────────────────────
 
+    # 综合市场状态分类（趋势 + 波动率）。
     @staticmethod
     def market_state(df: pd.DataFrame) -> dict:
-        """综合市场状态分类（趋势 + 波动率）。"""
         try:
             last = df.iloc[-1]
             price = float(last["close"])
@@ -175,20 +175,26 @@ class IndicatorService:
             sma_50 = float(last.get("sma_50", 0) or 0)
             atr = IndicatorService.atr_pct(df)
 
-            # 通过均线排列判断趋势强度
-            if sma_5 > sma_20 > sma_50:
+            # 计算趋势强度（价格距离 SMA20 的百分比）
+            trend_pct = abs(price - sma_20) / sma_20 * 100 if sma_20 > 0 else 0
+
+            # 通过均线排列 + 价格偏离判断趋势
+            if sma_5 > sma_20 > sma_50 and trend_pct > 0.5:
                 ts, conf = "强上涨", 0.9
-            elif sma_5 < sma_20 < sma_50:
+            elif sma_5 < sma_20 < sma_50 and trend_pct > 0.5:
                 ts, conf = "强下跌", 0.9
-            elif sma_20 > 0 and abs(sma_5 - sma_20) / sma_20 < 0.005:
-                ts, conf = "震荡", 0.7
+            elif sma_5 > sma_20:
+                ts, conf = "偏多", 0.65
+            elif sma_5 < sma_20:
+                ts, conf = "偏空", 0.65
+            elif atr < 0.3 and trend_pct < 0.3:
+                ts, conf = "震荡", 0.5
             else:
                 ts, conf = "弱趋势", 0.5
 
-            # 结合波动率分类
             if atr > 3:
                 state = f"高波动{ts}"
-            elif atr < 1:
+            elif atr < 0.5:
                 state = "低波动震荡"
             else:
                 state = ts
@@ -196,3 +202,13 @@ class IndicatorService:
             return {"state": state, "confidence": conf, "atr_pct": atr, "trend_strength": ts}
         except Exception:
             return {"state": "未知", "confidence": 0.5, "atr_pct": 2.0, "trend_strength": "未知"}
+
+
+# 模块级包装函数 — 供 engine/strategies 等通过 get_indicator_service() 返回的模块直接调用
+calculate_all = IndicatorService.calculate_all
+latest_indicators = IndicatorService.latest_indicators
+atr_pct = IndicatorService.atr_pct
+calc_rsi = IndicatorService.calc_rsi
+trend_analysis = IndicatorService.trend_analysis
+support_resistance = IndicatorService.support_resistance
+market_state = IndicatorService.market_state

@@ -1,0 +1,32 @@
+"""
+创建时间: 2026-06-14
+作者: hongchuwudi
+文件名: model_super_analyst.py 超级分析师模型
+描述: 超级分析师 LLM — deepseek-v4-flash，合并调度+分析+复盘
+
+包含:
+- 函数: get_super_analyst_llm — 返回超级分析师 LLM 实例
+"""
+
+import httpx
+from langchain_openai import ChatOpenAI
+
+from app.config import config
+
+_llm: ChatOpenAI | None = None
+
+_client = httpx.Client(proxy=None)  # 直连 DeepSeek，不走代理
+
+# 超级分析师模型：标准温度 + 1200 token，输出合并 JSON（调度+分析+复盘）。
+def get_super_analyst_llm() -> ChatOpenAI:
+    global _llm
+    if _llm is None:
+        _llm = ChatOpenAI(
+            model="deepseek-v4-flash",
+            api_key=config.ai.deepseek_api_key,
+            base_url=config.ai.deepseek_base_url,
+            temperature=0.3,
+            max_tokens=1200,
+            http_client=_client,
+        )
+    return _llm

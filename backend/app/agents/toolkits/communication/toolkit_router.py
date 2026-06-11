@@ -17,7 +17,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from app.agents.toolkits.communication.toolkit_handoff import HANDOFF_SIGNAL
 from app.agents.toolkits.communication.toolkit_dialogue import ASK_SIGNAL
-from app.logger import get_logger
+from app.core.logger import get_logger
 
 logger = get_logger()
 MAX_ASK_ROUNDS = 2

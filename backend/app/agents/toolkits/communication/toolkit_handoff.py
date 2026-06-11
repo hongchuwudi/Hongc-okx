@@ -36,6 +36,12 @@ def transfer_to_risk(reason: str = "") -> str:
 
 
 @tool
+def transfer_to_super_analyst(reason: str = "") -> str:
+    """将控制权移交给超级分析师。"""
+    return f"{HANDOFF_SIGNAL}super_analyst|{reason}"
+
+
+@tool
 def transfer_to_trader(reason: str = "") -> str:
     """将控制权移交给交易裁决员。"""
     return f"{HANDOFF_SIGNAL}trader|{reason}"

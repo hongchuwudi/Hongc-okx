@@ -29,6 +29,12 @@ def ask_reviewer(question: str) -> str:
 
 
 @tool
+def ask_super_analyst(question: str) -> str:
+    """向超级分析师提问。"""
+    return f"{ASK_SIGNAL}super_analyst|{question}"
+
+
+@tool
 def ask_risk(question: str) -> str:
     """向风控师提问。"""
     return f"{ASK_SIGNAL}risk|{question}"

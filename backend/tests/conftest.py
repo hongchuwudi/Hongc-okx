@@ -15,9 +15,9 @@ import pandas as pd
 import pytest
 
 
+# 200 行模拟 OHLCV 数据，含上升趋势。
 @pytest.fixture
 def sample_df():
-    """200 行模拟 OHLCV 数据，含上升趋势。"""
     np.random.seed(42)
     n = 200
     close = np.cumsum(np.random.randn(n) * 50) + 95000
@@ -29,14 +29,14 @@ def sample_df():
     }, index=pd.date_range("2026-06-01", periods=n, freq="1min"))
 
 
+# 模拟 BTC/USDT 多头持仓。
 @pytest.fixture
 def sample_position():
-    """模拟 BTC/USDT 多头持仓。"""
     return {"side": "long", "size": 0.1, "entry_price": 94000, "unrealized_pnl": 200, "leverage": 1}
 
 
+# 将模拟数据注入 toolkits.toolkit_data 缓存。
 @pytest.fixture
 def load_fixtures(sample_df, sample_position):
-    """将模拟数据注入 toolkits.toolkit_data 缓存。"""
     from app.agents.toolkits.toolkit_data import load_data
     load_data(sample_df, price=95000.0, equity=10000.0, position=sample_position)

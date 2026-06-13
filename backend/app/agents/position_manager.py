@@ -11,22 +11,19 @@
 - 函数: _calc_adaptive_tp — 根据波动率调整止盈目标
 """
 
-from app.logger import get_logger
+from app.core.logger import get_logger
 
 # 全局日志记录器
 logger = get_logger()
 
 
+# 动态持仓管理。 每 tick 运行，包括 HOLD tick：
+# 1. 追踪止损 — 盈利到阈值后锁定利润
+# 2. ATR 调整 — 根据当前波动率调整 TP/SL 宽度
+# 3. 去抖更新 — 变化 < 0.1% 时跳过（避免频繁 API 调用）
 class PositionManager:
-    """动态持仓管理。
 
-    每 tick 运行，包括 HOLD tick：
-    1. 追踪止损 — 盈利到阈值后锁定利润
-    2. ATR 调整 — 根据当前波动率调整 TP/SL 宽度
-    3. 去抖更新 — 变化 < 0.1% 时跳过（避免频繁 API 调用）
-    """
-
-    def __init__(self, exchange, symbol: str = "BTC/USDT:USDT"):
+    def __init__(self, exchange, symbol: str):
         # 交易所客户端实例
         self._exchange = exchange
         # 交易对符号
@@ -38,6 +35,13 @@ class PositionManager:
 
     # ── 主入口 ────────────────────────────────────────────
 
+    # 评估并更新持仓的止盈止损。
+    # Returns: {
+    #     updated: bool,
+    #     stop_loss: float,
+    #     take_profit: float,
+    #     reason: str
+    # }
     async def update(
         self,
         position: dict | None,
@@ -46,10 +50,6 @@ class PositionManager:
         current_sl: float,
         current_tp: float,
     ) -> dict:
-        """评估并更新持仓的止盈止损。
-
-        Returns: {updated: bool, stop_loss: float, take_profit: float, reason: str}
-        """
         # 无持仓时跳过
         if not position or not position.get("side") or position.get("size", 0) <= 0:
             return {"updated": False, "stop_loss": current_sl, "take_profit": current_tp, "reason": "无持仓"}
@@ -70,6 +70,14 @@ class PositionManager:
         new_sl = self._calc_trailing_stop(side, entry, current_price, profit_pct, current_sl, atr_pct)
         new_tp = self._calc_adaptive_tp(side, entry, current_price, profit_pct, current_tp, atr_pct)
 
+        # 确保 SL/TP 在现价正确的一侧（空头 SL>现价>TP，多头 TP>现价>SL）
+        if side == "short":
+            new_sl = max(new_sl, current_price * 1.001)  # SL 必须高于现价
+            new_tp = min(new_tp, current_price * 0.999)  # TP 必须低于现价
+        else:
+            new_sl = min(new_sl, current_price * 0.999)  # SL 必须低于现价
+            new_tp = max(new_tp, current_price * 1.001)  # TP 必须高于现价
+
         # 去抖：变化 < 0.1% 不更新（避免频繁 API 调用）
         sl_changed = self._last_sl is None or abs(new_sl - self._last_sl) / self._last_sl > 0.001
         tp_changed = self._last_tp is None or abs(new_tp - self._last_tp) / self._last_tp > 0.001
@@ -79,19 +87,22 @@ class PositionManager:
 
         # 更新 OKX 算法单（止盈止损挂单）
         try:
-            okx_symbol = self._symbol.replace("/", "-").replace(":USDT", "-SWAP")
             close_side = "sell" if side == "long" else "buy"
 
             # 取消旧算法单
-            await self._exchange.cancel_algo_orders(self._symbol)
+            try:
+                await self._exchange.cancel_algo_orders(self._symbol)
+            except Exception as ce:
+                logger.warning(f"取消旧算法单失败(忽略): {ce}")
 
-            # 挂新止损单
+            # 分别挂止损单和止盈单（conditional 类型只能设 SL 或 TP，不可同时）
             await self._exchange.create_algo_order(
-                self._symbol, close_side, "conditional", size, new_sl
+                self._symbol, close_side, "conditional", size, new_sl,
+                sl_side=True,
             )
-            # 挂新止盈单
             await self._exchange.create_algo_order(
-                self._symbol, close_side, "conditional", size, new_tp, new_tp
+                self._symbol, close_side, "conditional", size, new_tp,
+                sl_side=False,
             )
 
             # 记录最新值
@@ -115,20 +126,16 @@ class PositionManager:
 
     # ── 追踪止损计算 ───────────────────────────────────────
 
+    # 计算追踪止损价位。
+    # 多头: SL < entry（价格下跌触发止损）
+    # 空头: SL > entry（价格上涨触发止损）
+    # 规则: - 盈利 > 5%: 移动到保本+1%
+    #      - 盈利 > 2%: 追踪到盈利-1%（保护一半利润）
+    #      - 否则:      保持当前 SL 或 ATR 默认
     def _calc_trailing_stop(
         self, side: str, entry: float, price: float,
         profit_pct: float, current_sl: float, atr_pct: float,
     ) -> float:
-        """计算追踪止损价位。
-
-        多头: SL < entry（价格下跌触发止损）
-        空头: SL > entry（价格上涨触发止损）
-
-        规则:
-        - 盈利 > 5%: 移动到保本+1%
-        - 盈利 > 2%: 追踪到盈利-1%（保护一半利润）
-        - 否则: 保持当前 SL 或 ATR 默认
-        """
         if side == "long":
             if profit_pct > 5:
                 return max(current_sl, entry * 1.01)  # 保本+1%
@@ -144,15 +151,13 @@ class PositionManager:
 
     # ── 自适应止盈计算 ─────────────────────────────────────
 
+    # 根据波动率调整止盈目标。
+    # 高波动(ATR>3%): 目标更远
+    # 低波动(ATR<1%): 目标更近
     def _calc_adaptive_tp(
         self, side: str, entry: float, price: float,
         profit_pct: float, current_tp: float, atr_pct: float,
     ) -> float:
-        """根据波动率调整止盈目标。
-
-        高波动(ATR>3%): 目标更远
-        低波动(ATR<1%): 目标更近
-        """
         # 根据 ATR 确定止盈倍数
         if atr_pct > 3:
             mult = 6.0  # 高波动：6倍 ATR

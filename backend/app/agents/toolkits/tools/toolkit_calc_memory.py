@@ -12,8 +12,8 @@
 
 
 def _store():
-    from app.memory import memory_store
-    return memory_store
+    from app.services.memory.memory import memory_service
+    return memory_service
 
 
 def get_trade_stats() -> str:
@@ -28,8 +28,15 @@ def get_recent_trades(limit: int = 10) -> str:
     if not recent: return "暂无历史交易"
     lines = [f"最近{len(recent)}笔:"]
     for m in recent:
-        pnl = m.get("outcome_pnl") or 0
-        lines.append(f"  {m.get('timestamp', '')} {m.get('signal', ''):4s} @${m.get('price', 0):,.0f} → {pnl:+.2f}")
+        ts = m.get('timestamp', '')
+        # 截取时间部分 MM-DD HH:MM
+        if len(ts) >= 16:
+            ts = ts[5:16].replace('T', ' ')
+        price = m.get('price', 0) or 0
+        pnl = m.get('outcome_pnl') or 0
+        # 小币种用足够精度
+        price_str = f"${price:.6f}" if price < 1 else f"${price:.2f}"
+        lines.append(f"  {ts} {m.get('signal', 'HOLD'):4s} @{price_str} → PnL{pnl:+.2f}")
     return "\n".join(lines)
 
 

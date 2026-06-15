@@ -1,119 +1,136 @@
 /**
- * 创建时间: 2026-06-06
+ * 创建时间: 2026-06-11
  * 作者: hongchuwudi
- * 文件名: DashboardContext.tsx 全局状态与自动刷新
- * 描述: 全局状态管理，通过 useReducer 管理仪表盘数据，支持 HTTP 轮询和 WebSocket 实时推送
+ * 描述: 仪表盘全局状态 — HTTP 轮询 + WebSocket 推送
+ */
+
+/**
+ * 创建时间: 2026-06-11
+ * 作者: hongchuwudi
+ * 描述: 仪表盘全局状态 — HTTP 轮询 + WebSocket 推送
  *
  * 包含:
- * - 常量: initialState — 状态初始值，默认开启自动刷新
- * - 函数: reducer — 状态 reducer，处理 FETCH_START/FETCH_SUCCESS/FETCH_ERROR/TOGGLE_AUTO_REFRESH/WS_UPDATE 动作
- * - 类型: CtxValue — Context 值类型定义
- * - 组件: DashboardProvider — 状态提供者，封装状态管理和数据刷新逻辑
- * - Hook: useDashboard — 消费全局 Dashboard 状态的 Hook
+ * - DashboardProvider — Context Provider，管理定时轮询和 WS 连接
+ * - useDashboard — 消费 Hook，组件内获取 state 和 refresh
+ * - reducer — 处理 LOADING / OK / ERROR / TICK 四种状态转换
  */
-import { createContext, useContext, useReducer, useCallback, useEffect, type ReactNode } from 'react'
-import type { DashboardState, DashboardAction } from '../types/dashboard'
-import { fetchAll } from '../lib/api'
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import type { DashboardState, DashboardAction, AgentEvent } from '../types/dashboard'
+import { fetchStatus, fetchEquity, fetchAgentLogs } from '../api/dashboard'
+import { fetchTrades } from '../api/trades'
+import { connectWs } from '../utils/ws'
 
-// 初始状态 — 自动刷新默认开启
-const initialState: DashboardState = {
+// 初始状态：未加载，无数据
+const init: DashboardState = {
   status: null, trades: [], equity: [],
-  loading: true, error: null,
-  autoRefresh: true,  // 默认开启，页面看起来是活的
-  lastUpdated: null,
+  loading: true, error: null, lastUpdated: null,
+  agentEvents: [],
+  agentLogs: [],
 }
 
-function reducer(state: DashboardState, action: DashboardAction): DashboardState {
-  switch (action.type) {
-    case 'FETCH_START':
-      return { ...state, loading: true, error: null }
-    case 'FETCH_SUCCESS':
-      return { ...state, loading: false, error: null, status: action.status,
-        trades: action.trades, equity: action.equity, lastUpdated: Date.now() }
-    case 'FETCH_ERROR':
-      return { ...state, loading: false, error: action.error }
-    case 'TOGGLE_AUTO_REFRESH':
-      return { ...state, autoRefresh: !state.autoRefresh }
-    case 'WS_UPDATE':
-      return { ...state, status: action.status, lastUpdated: Date.now() }
-    default:
-      return state
+/** 从数组尾部向前查找匹配元素的位置 */
+function findLastIndex<T>(arr: T[], predicate: (item: T) => boolean): number {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (predicate(arr[i])) return i
+  }
+  return -1
+}
+
+// 状态机：LOADING 清 error → OK 写入数据 → ERROR 留旧数据 + 写 error → TICK 仅更新时间戳
+function reducer(s: DashboardState, a: DashboardAction): DashboardState {
+  switch (a.type) {
+    case 'LOADING': return { ...s, loading: true, error: null }
+    case 'OK': return { ...s, loading: false, error: null, status: a.status, trades: a.trades, equity: a.equity, lastUpdated: Date.now() }
+    case 'ERROR': return { ...s, loading: false, error: a.error }
+    case 'TICK': return { ...s, lastUpdated: Date.now() }
+    // Agent 实时日志：agent_input 时清空上轮，tool_call end 配对 start，保留最新 100 条
+    case 'AGENT_EVENT': {
+      let base = s.agentEvents
+      if (a.event.type === 'agent_input') base = []
+
+      // tool_call end：找到同 agent 同 tool 的 start 事件，补全 result
+      if (a.event.type === 'agent_tool_call' && !a.event.args && a.event.result) {
+        const idx = findLastIndex(base, e =>
+          e.type === 'agent_tool_call' && e.agent === a.event.agent && e.tool === a.event.tool && !e.result
+        )
+        if (idx >= 0) {
+          const merged = [...base]
+          merged[idx] = { ...merged[idx], result: a.event.result, ts: a.event.ts }
+          if (merged.length > 100) merged.splice(0, merged.length - 100)
+          return { ...s, agentEvents: merged }
+        }
+      }
+
+      const next = [...base, a.event]
+      if (next.length > 100) next.splice(0, next.length - 100)
+      return { ...s, agentEvents: next }
+    }
+    // Agent 历史日志（从 API 加载）
+    case 'AGENT_LOGS': return { ...s, agentLogs: a.logs }
   }
 }
 
-// Context 值类型 — 包含状态、刷新函数和自动刷新切换函数
-interface CtxValue { state: DashboardState; refresh: () => void; toggleAutoRefresh: () => void }
-const Ctx = createContext<CtxValue | null>(null)
+const Ctx = createContext<{ state: DashboardState; refresh: () => void; wsConnected: boolean } | null>(null)
 
-// 状态提供者组件 — 管理 useReducer 状态、HTTP 轮询和 WebSocket 实时推送
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(reducer, init)
+  const timerRef = useRef<ReturnType<typeof setInterval>>()
 
-  // 刷新函数 — 并发拉取 status/trades/equity 全量数据
+  // 并行请求三个接口，任一一失败整个状态标记为 error
   const refresh = useCallback(async () => {
-    dispatch({ type: 'FETCH_START' })
+    dispatch({ type: 'LOADING' })
     try {
-      const data = await fetchAll()
-      dispatch({ type: 'FETCH_SUCCESS', status: data.status, trades: data.trades, equity: data.equity })
+      const [status, trades, equity] = await Promise.all([
+        fetchStatus(),
+        fetchTrades(20),
+        fetchEquity(500),
+      ])
+      dispatch({ type: 'OK', status, trades, equity })
     } catch (err: unknown) {
-      dispatch({ type: 'FETCH_ERROR', error: err instanceof Error ? err.message : 'Unknown error' })
+      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : '请求失败' })
     }
   }, [])
 
-  // 切换自动刷新开关
-  const toggleAutoRefresh = useCallback(() => dispatch({ type: 'TOGGLE_AUTO_REFRESH' }), [])
-
-  // 初始加载 — 组件挂载时立即拉取一次数据
+  // 首屏立即加载一次
   useEffect(() => { refresh() }, [refresh])
 
-  // HTTP 轮询 — 5 秒间隔
+  // 加载 Agent 历史日志（Redis 持久化，刷新页面后恢复）
   useEffect(() => {
-    if (!state.autoRefresh) return
-    const id = setInterval(refresh, 5000)
-    return () => clearInterval(id)
-  }, [state.autoRefresh, refresh])
+    fetchAgentLogs(5).then(logs => dispatch({ type: 'AGENT_LOGS', logs })).catch(() => {})
+  }, [])
 
-  // WebSocket 实时推送
+  // 定时轮询：每 5 秒全量刷新
   useEffect(() => {
-    let ws: WebSocket | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout>
-
-    function connect() {
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${protocol}//${location.host}/ws/live`)
-
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data)
-          if (msg.type === 'tick_complete' && msg.btc_price) {
-            // WebSocket 推送后立即 HTTP 拉全量（保证数据完整）
-            refresh()
-          }
-        } catch { /* ignore */ }
-      }
-
-      ws.onclose = () => {
-        reconnectTimer = setTimeout(connect, 3000)
-      }
-
-      ws.onerror = () => {
-        ws?.close()
-      }
-    }
-
-    connect()
-    return () => {
-      ws?.close()
-      clearTimeout(reconnectTimer)
-    }
+    timerRef.current = setInterval(refresh, 5000)
+    return () => clearInterval(timerRef.current)
   }, [refresh])
 
-  return <Ctx.Provider value={{ state, refresh, toggleAutoRefresh }}>{children}</Ctx.Provider>
+  // WebSocket 连接状态
+  const [wsConnected, setWsConnected] = useState(false)
+
+  // WebSocket 监听 tick_complete 事件，收到后增量刷新（先更新时间戳，再拉数据）
+  useEffect(() => {
+    const ws = connectWs((event) => {
+      if (event.type === 'tick_complete') {
+        setWsConnected(true)
+        dispatch({ type: 'TICK' })
+        refresh()
+      } else if (event.type === 'circuit_breaker' && event.reason === 'ws_disconnected') {
+        setWsConnected(false)
+      } else if (event.type === 'agent_input' || event.type === 'agent_output' || event.type === 'agent_tool_call') {
+        dispatch({ type: 'AGENT_EVENT', event: event as AgentEvent })
+      }
+    })
+    // 连接建立后标记
+    const timer = setTimeout(() => setWsConnected(true), 500)
+    return () => { ws.close(); clearTimeout(timer) }
+  }, [refresh])
+
+  return <Ctx.Provider value={{ state, refresh, wsConnected }}>{children}</Ctx.Provider>
 }
 
-// 消费全局 Dashboard 状态的自定义 Hook
 export function useDashboard() {
   const ctx = useContext(Ctx)
-  if (!ctx) throw new Error('useDashboard must be used within DashboardProvider')
+  if (!ctx) throw new Error('useDashboard need DashboardProvider')
   return ctx
 }

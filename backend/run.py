@@ -122,7 +122,7 @@ def check_env():
         issues.append(".env 文件不存在，请从 .env_template 复制并配置")
     else:
         # 检查关键配置项
-        from app.config import config as cfg
+        from app.core.config import config as cfg
         if not cfg.ai.deepseek_api_key or "your-" in cfg.ai.deepseek_api_key:
             issues.append("DEEPSEEK_API_KEY 未配置，AI 决策将不可用")
         if not cfg.okx.api_key or "your-" in cfg.okx.api_key:
@@ -146,7 +146,7 @@ def check_env():
 
 # 启动交易引擎主循环，监听关闭事件。
 async def start_engine():
-    from app.engine.loop import TradingEngine
+    from app.engine import TradingEngine
     from app.services.engine.engine_control import set_running
 
     engine = TradingEngine()
@@ -208,12 +208,12 @@ async def main():
     sync_msg = sync_runtime_to_env()
     if sync_msg:
         logger.info(sync_msg)
-    from app.config import config as cfg
+    from app.core.config import config as cfg
 
     # 阶段 1: 数据库
     logger.info("[1/3] 初始化数据库...")
     try:
-        from app.database import init_db
+        from app.core.database import init_db
         init_db()
         logger.info("      数据库就绪")
     except Exception as e:

@@ -1,35 +1,616 @@
 # ========================================
 # BTC/USDT 自动交易系统 — v2.0
 # ========================================
+# 本文件列出了系统运行所需的所有 Python 依赖包。
+# 建议使用 pip install -r requirements.txt 一键安装。
+# 版本未固定时，默认安装最新兼容版本，生产环境建议锁定具体版本号。
 
-# 交易所
-ccxt
+# ---------- 交易所接口 ----------
+ccxt                     # 统一的加密货币交易所 API 库，支持 Binance、OKX 等 100+ 交易所。
+                         # 用于获取实时行情、下单、查询账户余额等所有交易操作。
 
-# AI 模型
-openai>=1.0
-langchain
-langgraph
-langchain-openai
+# ---------- AI 与智能决策 ----------
+openai>=1.0              # OpenAI 官方 SDK，用于调用 GPT-4 等大模型，实现智能信号分析和策略生成。
+langchain                # 构建 LLM 应用的开发框架，提供链式调用、工具集成、记忆管理等能力。
+langgraph                # LangChain 的图状态机扩展，用于构建复杂的多步骤 AI 决策流程（如循环、条件分支）。
+langchain-openai         # LangChain 与 OpenAI 的集成适配器，统一了提示模板、输出解析和模型调用接口。
 
-# 数据处理
-pandas
-python-dotenv
-requests
-urllib3
+# ---------- 数据处理与计算 ----------
+pandas                   # 核心数据分析库，用于处理 OHLCV 行情数据、计算技术指标（如 ATR）、数据清洗和特征工程。
+python-dotenv            # 从 .env 文件加载环境变量，用于存储 API Key、数据库连接字符串等敏感配置。
+requests                 # 同步 HTTP 请求库，用于调用外部 API（如获取新闻、发送报警通知等）。
+urllib3                  # requests 的底层依赖，处理 HTTP 连接池和重试逻辑，通常无需直接引用。
 
-# 数据库
-sqlalchemy>=2.0
-asyncpg
-psycopg2-binary
-redis>=5.0
+# ---------- 数据库与缓存 ----------
+sqlalchemy>=2.0          # 强大的 SQL 工具包和 ORM，用于异步操作 PostgreSQL，管理历史 K 线、订单记录和策略参数。
+asyncpg                 # PostgreSQL 的异步驱动，配合 SQLAlchemy 2.0 实现高性能异步数据库访问。
+psycopg2-binary         # PostgreSQL 的同步驱动（备选），某些场景下用于数据迁移或同步任务。
+redis>=5.0              # 内存数据库，用作缓存（如存储实时行情快照）、分布式锁、限流计数和任务队列。
 
-# Web 服务
-fastapi
-uvicorn
+# ---------- Web 服务与 API ----------
+fastapi                 # 现代异步 Web 框架，用于提供 RESTful API 接口，方便前端监控、手动干预和系统状态查询。
+uvicorn                 # ASGI 服务器，用于运行 FastAPI 应用，支持高并发和热重载。
 
-# 异步
-aiohttp
+# ---------- 异步编程支持 ----------
+aiohttp                 # 异步 HTTP 客户端/服务端库，用于高频并发请求交易所 API，比 requests 更适合 I/O 密集型场景。
 
-# v1.0 遗留（仅 legacy/ 需要，正常运行时可选）
-# streamlit
-# plotly
+# ---------- v1.0 遗留组件（仅 legacy/ 目录需要，正常运行时可选） ----------
+# 以下两个库仅在旧版界面或回测可视化中使用，若只运行自动化交易核心，可以注释掉以减小依赖。
+# streamlit              # 快速构建数据仪表盘，用于实时显示交易状态和绩效图表（旧版 UI）。
+# plotly                 # 交互式图表库，配合 streamlit 绘制 K 线图和资金曲线（旧版回测展示）。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ========================================
+# 一、交易所接口
+# ========================================
+
+# ---------- ccxt ----------
+# 统一的加密货币交易所 API 库，支持 Binance、OKX 等 100+ 交易所。
+# 用于获取实时行情、下单、查询账户余额等所有交易操作。
+# 
+# 【常用函数】
+# - exchange.fetch_ohlcv(symbol, timeframe)      : 获取 K 线数据[reference:0]
+# - exchange.fetch_ticker(symbol)                : 获取最新行情[reference:1]
+# - exchange.fetch_balance()                     : 查询账户余额[reference:2]
+# - exchange.create_order(symbol, type, side, amount, price) : 下单[reference:3]
+# - exchange.cancel_order(order_id, symbol)      : 撤单
+# - exchange.fetch_open_orders(symbol)           : 查询未成交订单
+# - exchange.load_markets()                      : 加载交易对信息[reference:4]
+# 
+# 【代码示例】
+# import ccxt
+# 
+# # 连接 Binance（沙箱测试模式）[reference:5]
+# exchange = ccxt.binance({
+#     'apiKey': 'YOUR_API_KEY',
+#     'secret': 'YOUR_SECRET_KEY',
+#     'sandbox': True,          # 沙箱模式，用于测试
+#     'enableRateLimit': True,  # 启用内置限流
+# })
+# 
+# # 获取 BTC/USDT 1小时 K 线
+# ohlcvs = exchange.fetch_ohlcv('BTC/USDT', '1h')
+# 
+# # 获取实时行情
+# ticker = exchange.fetch_ticker('BTC/USDT')
+# print(ticker['last'])  # 最新价
+# 
+# # 限价买单
+# order = exchange.create_order('BTC/USDT', 'limit', 'buy', 0.001, 30000)
+
+
+# ========================================
+# 二、AI 与智能决策
+# ========================================
+
+# ---------- openai>=1.0 ----------
+# OpenAI 官方 SDK，用于调用 GPT-4 等大模型，实现智能信号分析和策略生成。
+# 
+# 【常用函数】
+# - OpenAI()                                    : 创建客户端实例[reference:6]
+# - client.chat.completions.create()            : 聊天补全（标准方式）[reference:7]
+# - client.responses.create()                   : 新版 Responses API[reference:8]
+# 
+# 【代码示例】
+# from openai import OpenAI
+# import os
+# 
+# client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# 
+# # 方式一：Chat Completions API（最常用）[reference:9]
+# completion = client.chat.completions.create(
+#     model="gpt-4o",
+#     messages=[
+#         {"role": "system", "content": "你是一个交易策略分析师"},
+#         {"role": "user", "content": "分析当前 BTC 走势，给出买卖建议"}
+#     ]
+# )
+# print(completion.choices[0].message.content)
+# 
+# # 方式二：Responses API（新版，支持多模态）[reference:10]
+# response = client.responses.create(
+#     model="gpt-4o",
+#     input="分析 BTC 近期走势"
+# )
+# print(response.output_text)
+
+
+# ---------- langchain ----------
+# 构建 LLM 应用的开发框架，提供链式调用、工具集成、记忆管理等能力。
+# 
+# 【核心概念】
+# - Chain（链）: 将多个步骤串成流水线[reference:11]
+# - LCEL（LangChain 表达式语言）: 用 | 管道符串联组件[reference:12]
+# - PromptTemplate: 提示词模板，支持变量填充[reference:13]
+# - OutputParser: 解析模型输出为结构化数据[reference:14]
+# 
+# 【代码示例】
+# from langchain.prompts import PromptTemplate
+# from langchain_openai import ChatOpenAI
+# from langchain_core.output_parsers import StrOutputParser
+# 
+# # 定义提示词模板[reference:15]
+# prompt = ChatPromptTemplate.from_messages([
+#     ("system", "你是一个专业的翻译官，请将以下文本从 {source_lang} 翻译成 {target_lang}。"),
+#     ("human", "{text}"),
+# ])
+# 
+# model = ChatOpenAI(model="gpt-4o-mini")
+# parser = StrOutputParser()  # 提取纯文本输出[reference:16]
+# 
+# # LCEL 方式构建链[reference:17][reference:18]
+# chain = prompt | model | parser
+# 
+# # 执行链[reference:19]
+# result = chain.invoke({
+#     "source_lang": "中文",
+#     "target_lang": "英文",
+#     "text": "你好，今天天气不错。"
+# })
+# print(result)
+
+
+# ---------- langgraph ----------
+# LangChain 的图状态机扩展，用于构建复杂的多步骤 AI 决策流程（如循环、条件分支）。
+# 
+# 【核心概念】
+# - StateGraph: 状态图，定义工作流结构[reference:20]
+# - Node（节点）: 工作流中的每个处理步骤
+# - Edge（边）: 节点之间的连接（条件/无条件）
+# - Checkpointer: 状态持久化，支持断点续传[reference:21]
+# 
+# 【代码示例】
+# from langgraph.graph import StateGraph, END
+# from typing import TypedDict
+# 
+# # 定义状态结构[reference:22]
+# class AgentState(TypedDict):
+#     messages: list
+#     next_step: str
+# 
+# # 创建状态图[reference:23]
+# workflow = StateGraph(AgentState)
+# 
+# # 添加节点
+# workflow.add_node("analyze", analyze_function)
+# workflow.add_node("trade", trade_function)
+# 
+# # 添加边
+# workflow.add_edge("analyze", "trade")
+# workflow.add_conditional_edges("trade", should_continue, {
+#     "continue": "analyze",
+#     "end": END
+# })
+# 
+# # 编译并运行
+# app = workflow.compile()
+# result = app.invoke({"messages": ["分析 BTC 走势"]})
+
+
+# ---------- langchain-openai ----------
+# LangChain 与 OpenAI 的集成适配器，统一了提示模板、输出解析和模型调用接口。
+# 
+# 【代码示例】
+# from langchain_openai import ChatOpenAI
+# 
+# # 替代直接使用 openai SDK，通过 LangChain 统一接口调用
+# model = ChatOpenAI(
+#     model="gpt-4o-mini",
+#     temperature=0.7,
+# )
+# response = model.invoke("你好")
+# print(response.content)
+
+
+# ========================================
+# 三、数据处理与计算
+# ========================================
+
+# ---------- pandas ----------
+# 核心数据分析库，用于处理 OHLCV 行情数据、计算技术指标、数据清洗和特征工程。
+# 
+# 【常用函数分类】[reference:24]
+# 
+# 1. 数据读取与创建[reference:25]
+#    - pd.read_csv('file.csv')        : 读取 CSV
+#    - pd.read_excel('file.xlsx')     : 读取 Excel
+#    - pd.DataFrame(data)             : 从字典/列表创建 DataFrame
+#    - df.to_csv('out.csv')           : 写入 CSV
+# 
+# 2. 数据查看[reference:26]
+#    - df.head(n)                     : 查看前 n 行
+#    - df.tail(n)                     : 查看后 n 行
+#    - df.info()                      : 查看数据信息（类型、缺失值）
+#    - df.describe()                  : 描述性统计[reference:27]
+#    - df.shape                       : 返回 (行数, 列数)
+# 
+# 3. 数据筛选[reference:28]
+#    - df['column']                   : 选取单列
+#    - df[['col1', 'col2']]           : 选取多列
+#    - df.loc[行条件, 列条件]          : 按标签筛选[reference:29]
+#    - df.iloc[行位置, 列位置]         : 按位置筛选[reference:30]
+#    - df[df['price'] > 100]          : 布尔索引筛选[reference:31]
+#    - df.query('price > 100')        : 条件查询[reference:32]
+# 
+# 4. 数据清洗[reference:33]
+#    - df.isnull() / df.notnull()     : 判断缺失值
+#    - df.dropna()                    : 删除缺失值
+#    - df.fillna(value)               : 填充缺失值[reference:34]
+# 
+# 5. 分组与聚合[reference:35]
+#    - df.groupby('column').sum()     : 分组求和
+#    - df.groupby('column').mean()    : 分组求均值
+#    - df.groupby('column').agg()     : 自定义聚合
+# 
+# 6. 排序[reference:36]
+#    - df.sort_values('col', ascending=False) : 按列排序
+#    - df.sort_index()                : 按索引排序
+# 
+# 【代码示例】
+# import pandas as pd
+# 
+# # 读取 CSV 数据[reference:37]
+# df = pd.read_csv('btc_1h.csv')
+# 
+# # 查看数据概况
+# print(df.head())      # 前5行
+# print(df.info())      # 数据信息
+# print(df.describe())  # 统计描述[reference:38]
+# 
+# # 筛选价格大于 30000 的行
+# df_high = df[df['close'] > 30000]
+# 
+# # 按日期排序
+# df = df.sort_values('timestamp')
+# 
+# # 计算技术指标（向量化运算，极快）[reference:39]
+# df['returns'] = df['close'].pct_change()  # 收益率
+# df['ma_20'] = df['close'].rolling(20).mean()  # 20日均线
+
+
+# ---------- python-dotenv ----------
+# 从 .env 文件加载环境变量，用于存储 API Key、数据库连接字符串等敏感配置。
+# 
+# 【常用函数】
+# - load_dotenv()           : 加载 .env 文件到环境变量[reference:40]
+# - find_dotenv()           : 自动查找 .env 文件路径[reference:41]
+# - dotenv_values()         : 读取 .env 为字典（不写入环境变量）[reference:42]
+# 
+# 【代码示例】
+# from dotenv import load_dotenv
+# import os
+# 
+# # 加载 .env 文件[reference:43]
+# load_dotenv()
+# 
+# # 读取环境变量
+# api_key = os.environ.get("OPENAI_API_KEY")
+# db_url = os.environ.get("DATABASE_URL")
+# 
+# # .env 文件内容示例:
+# # OPENAI_API_KEY=sk-xxx
+# # DATABASE_URL=postgresql://user:pass@localhost/db
+
+
+# ---------- requests ----------
+# 同步 HTTP 请求库，用于调用外部 API（如获取新闻、发送报警通知等）。
+# 
+# 【常用函数】
+# - requests.get(url, params, headers)     : GET 请求[reference:44]
+# - requests.post(url, json, data, headers): POST 请求[reference:45]
+# - requests.put(url, json, headers)       : PUT 请求
+# - requests.delete(url, headers)          : DELETE 请求
+# - requests.Session()                     : 会话对象（保持连接）
+# 
+# 【代码示例】
+# import requests
+# 
+# # GET 请求[reference:46]
+# response = requests.get('https://api.example.com/price', 
+#                         params={'symbol': 'BTCUSDT'})
+# print(response.json())  # 解析 JSON 响应
+# 
+# # POST 请求（发送 JSON）[reference:47]
+# response = requests.post('https://api.example.com/order',
+#                          json={'symbol': 'BTCUSDT', 'side': 'buy'},
+#                          headers={'Authorization': 'Bearer token'})
+# 
+# # 错误处理
+# if response.status_code == 200:
+#     data = response.json()
+# else:
+#     print(f"Error: {response.status_code}")
+
+
+# ---------- urllib3 ----------
+# requests 的底层依赖，处理 HTTP 连接池和重试逻辑，通常无需直接引用。
+# 
+# 【常用函数】
+# - urllib3.PoolManager()          : 创建连接池管理器[reference:48]
+# - pool.request(method, url)      : 发送请求[reference:49]
+# - urllib3.disable_warnings()     : 禁用警告（如 SSL 警告）
+# 
+# 【代码示例】（通常不直接使用，了解即可）
+# import urllib3
+# 
+# http = urllib3.PoolManager()
+# resp = http.request('GET', 'https://api.example.com/data')
+# print(resp.data.decode('utf-8'))
+
+
+# ========================================
+# 四、数据库与缓存
+# ========================================
+
+# ---------- sqlalchemy>=2.0 ----------
+# 强大的 SQL 工具包和 ORM，用于异步操作 PostgreSQL，管理历史 K 线、订单记录和策略参数。
+# 
+# 【核心概念】
+# - Engine: 数据库引擎，管理连接池
+# - DeclarativeBase: 声明式基类，定义模型[reference:50]
+# - mapped_column(): 定义列映射[reference:51]
+# - Session: 数据库会话，管理事务
+# - select(): 构建 SELECT 查询[reference:52]
+# 
+# 【常用操作】
+# 1. 定义模型[reference:53]
+# 2. 创建引擎: create_async_engine()
+# 3. 会话管理: async_sessionmaker()
+# 4. CRUD 操作: add(), commit(), delete(), execute()
+# 
+# 【代码示例】
+# from sqlalchemy import create_engine, Column, Integer, String, Float
+# from sqlalchemy.orm import declarative_base, sessionmaker
+# 
+# # 1. 定义模型[reference:54]
+# Base = declarative_base()
+# 
+# class Trade(Base):
+#     __tablename__ = 'trades'
+#     id = Column(Integer, primary_key=True)
+#     symbol = Column(String(20))
+#     price = Column(Float)
+#     quantity = Column(Float)
+# 
+# # 2. 创建引擎和会话
+# engine = create_engine('postgresql://user:pass@localhost/db')
+# Session = sessionmaker(bind=engine)
+# session = Session()
+# 
+# # 3. 查询[reference:55]
+# from sqlalchemy import select
+# trades = session.execute(select(Trade).where(Trade.symbol == 'BTCUSDT')).scalars()
+# 
+# # 4. 插入
+# new_trade = Trade(symbol='BTCUSDT', price=30000, quantity=0.1)
+# session.add(new_trade)
+# session.commit()
+
+
+# ---------- asyncpg ----------
+# PostgreSQL 的异步驱动，配合 SQLAlchemy 2.0 实现高性能异步数据库访问。
+# 
+# 【常用函数】
+# - asyncpg.connect()              : 建立数据库连接[reference:56]
+# - asyncpg.create_pool()          : 创建连接池[reference:57]
+# - connection.fetch()             : 查询并返回所有行
+# - connection.fetchrow()          : 查询并返回第一行
+# - connection.execute()           : 执行 SQL（INSERT/UPDATE/DELETE）
+# 
+# 【代码示例】
+# import asyncpg
+# import asyncio
+# 
+# async def main():
+#     # 建立连接[reference:58]
+#     conn = await asyncpg.connect(
+#         host='localhost',
+#         port=5432,
+#         user='user',
+#         password='pass',
+#         database='trading'
+#     )
+#     
+#     # 查询
+#     rows = await conn.fetch('SELECT * FROM trades WHERE symbol = $1', 'BTCUSDT')
+#     
+#     # 执行
+#     await conn.execute(
+#         'INSERT INTO trades(symbol, price) VALUES($1, $2)',
+#         'BTCUSDT', 30000
+#     )
+#     
+#     await conn.close()
+# 
+# asyncio.run(main())
+
+
+# ---------- psycopg2-binary ----------
+# PostgreSQL 的同步驱动（备选），某些场景下用于数据迁移或同步任务。
+# 
+# 【常用函数】
+# - psycopg2.connect()             : 建立数据库连接[reference:59]
+# - connection.cursor()            : 创建游标[reference:60]
+# - cursor.execute(sql, params)    : 执行 SQL[reference:61]
+# - cursor.fetchall()              : 获取所有结果[reference:62]
+# - cursor.fetchone()              : 获取一行结果
+# 
+# 【代码示例】
+# import psycopg2
+# 
+# # 建立连接[reference:63]
+# conn = psycopg2.connect(
+#     host='localhost',
+#     port=5432,
+#     user='user',
+#     password='pass',
+#     database='trading'
+# )
+# 
+# cursor = conn.cursor()
+# 
+# # 执行查询[reference:64]
+# cursor.execute('SELECT * FROM trades WHERE symbol = %s', ('BTCUSDT',))
+# rows = cursor.fetchall()  # 获取所有结果[reference:65]
+# 
+# # 提交事务
+# conn.commit()
+# cursor.close()
+# conn.close()
+
+
+# ---------- redis>=5.0 ----------
+# 内存数据库，用作缓存（如存储实时行情快照）、分布式锁、限流计数和任务队列。
+# 
+# 【常用函数】[reference:66]
+# - redis.Redis()                 : 创建客户端连接[reference:67]
+# - redis.set(key, value)         : 设置键值对
+# - redis.get(key)                : 获取值[reference:68]
+# - redis.exists(key)             : 检查键是否存在
+# - redis.delete(key)             : 删除键
+# - redis.expire(key, seconds)    : 设置过期时间
+# - redis.incr(key)               : 自增（用于计数器）
+# - redis.hset/hget               : 哈希表操作
+# - redis.lpush/lpop              : 列表操作（可用于队列）
+# - redis.publish/subscribe       : 发布/订阅[reference:69]
+# 
+# 【代码示例】[reference:70]
+# import redis
+# 
+# # 创建连接（默认本地 6379）
+# r = redis.Redis(
+#     host='localhost',
+#     port=6379,
+#     db=0,
+#     decode_responses=True  # 自动解码为字符串[reference:71]
+# )
+# 
+# # 基本操作
+# r.set('BTC_price', '30000')
+# price = r.get('BTC_price')  # 返回 '30000'
+# 
+# # 设置过期时间（60秒后自动删除）
+# r.setex('temp_data', 60, 'value')
+# 
+# # 计数器（用于限流）
+# count = r.incr('request_count')
+# if count > 100:
+#     print('请求超限！')
+
+
+# ========================================
+# 五、Web 服务与 API
+# ========================================
+
+# ---------- fastapi ----------
+# 现代异步 Web 框架，用于提供 RESTful API 接口，方便前端监控、手动干预和系统状态查询。
+# 
+# 【核心概念】
+# - FastAPI(): 创建应用实例
+# - @app.get/post/put/delete(): 路由装饰器[reference:72]
+# - APIRouter: 路由分组管理[reference:73]
+# - Pydantic 模型: 请求/响应数据验证
+# - Dependency Injection: 依赖注入（如数据库会话）
+# - 自动生成 OpenAPI 文档（/docs）
+# 
+# 【代码示例】[reference:74]
+# from fastapi import FastAPI, APIRouter
+# 
+# app = FastAPI()
+# router = APIRouter(prefix='/api/v1')
+# 
+# @router.get('/status')
+# async def get_status():
+#     return {'status': 'running', 'btc_price': 30000}
+# 
+# @router.post('/trade')
+# async def place_trade(symbol: str, side: str, amount: float):
+#     # 执行交易逻辑
+#     return {'order_id': '12345', 'status': 'placed'}
+# 
+# app.include_router(router)
+# 
+# # 运行：uvicorn main:app --reload
+
+
+# ---------- uvicorn ----------
+# ASGI 服务器，用于运行 FastAPI 应用，支持高并发和热重载。
+# 
+# 【常用命令】[reference:75]
+# - uvicorn main:app                : 运行应用
+# - uvicorn main:app --reload       : 热重载模式（开发用）
+# - uvicorn main:app --host 0.0.0.0 --port 8000 : 指定地址和端口
+# - uvicorn main:app --workers 4    : 多 worker 进程（生产用）
+# 
+# 【生产部署】[reference:76]
+# gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker
+# 
+# 【代码示例】（在 Python 中编程式启动）[reference:77]
+# import uvicorn
+# 
+# if __name__ == '__main__':
+#     uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=True)
+
+
+# ========================================
+# 六、异步编程支持
+# ========================================
+
+# ---------- aiohttp ----------
+# 异步 HTTP 客户端/服务端库，用于高频并发请求交易所 API，比 requests 更适合 I/O 密集型场景。
+# 
+# 【常用函数】
+# - aiohttp.ClientSession()        : 创建客户端会话[reference:78]
+# - session.get/post/put/delete()  : 发送请求[reference:79]
+# - session.ws_connect()           : WebSocket 连接（用于实时行情）
+# - aiohttp.web.Application()      : 服务端应用（可选）
+# 
+# 【代码示例】[reference:80]
+# import aiohttp
+# import asyncio
+# 
+# async def fetch_price(symbol):
+#     async with aiohttp.ClientSession() as session:
+#         async with session.get(
+#             f'https://api.binance.com/api/v3/ticker/price',
+#             params={'symbol': symbol}
+#         ) as response:
+#             data = await response.json()
+#             return float(data['price'])
+# 
+# # 并发获取多个交易对价格
+# async def main():
+#     symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']
+#     tasks = [fetch_price(s) for s in symbols]
+#     prices = await asyncio.gather(*tasks)  # 并发执行[reference:81]
+#     print(prices)
+# 
+# asyncio.run(main())
+
+
+# ========================================
+# 七、v1.0 遗留组件（仅 legacy/ 目录需要，正常运行时可选）
+# ========================================
+
+# ---------- streamlit ----------
+# 快速构建数据仪表盘，用于实时显示交易状态和绩效图表（旧版 UI）。
+# 注：v2.0 已用 FastAPI 替代，不再依赖此库。
+
+
+# ---------- plotly ----------
+# 交互式图表库，配合 streamlit 绘制 K 线图和资金曲线（旧版回测展示）。
+# 注：v2.0 已用 FastAPI 替代，不再依赖此库。

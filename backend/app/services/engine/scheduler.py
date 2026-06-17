@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from typing import Callable, Coroutine
 
-from app.database import get_redis
+from app.core.database import get_redis
 from app.core.logger import get_logger
 
 logger = get_logger()

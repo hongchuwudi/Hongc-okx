@@ -31,7 +31,7 @@ async def start():
         logger.warning("引擎已在运行中，跳过重复启动")
         return
 
-    from app.engine.loop import TradingEngine
+    from app.engine import TradingEngine
     _engine = TradingEngine()
     set_running(_engine.scheduler)
 

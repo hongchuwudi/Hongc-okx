@@ -1,18 +1,32 @@
 """
 创建时间: 2026-06-06
 作者: hongchuwudi
-文件名: trade.py 交易服务
-描述: 交易执行服务 — 下单、止盈止损、仓位管理 + 交易记录查询
+描述: 交易执行服务 — 下单 / 止盈止损 / 仓位管理 / 交易记录查询
 
 包含:
-- 类: TradeService — 交易执行服务，封装 OKX 订单操作
-- 函数: query_trades — 查询历史交易记录（扁平/分页）
+- 类: TradeService — 交易执行 + OKX 成交拉取 + 系统记录查询
+- 方法: query_trades         — 查询系统数据库历史交易记录（扁平/分页）
+- 方法: query_okx_trades     — 从 OKX 拉取真实成交（分页/方向/时间筛选）
 """
 
 from typing import Optional
 
-from app.database import get_sync_session
+from app.core.database import get_sync_session
 from app.entities.trading import Trade
+from app.core.logger import get_logger
+
+logger = get_logger()
+
+
+def _safe_entry_price(pos: dict) -> float:
+    raw = pos.get("entryPrice")
+    if raw is not None and float(raw) > 0:
+        return float(raw)
+    mark = float(pos.get("markPrice", 0))
+    if mark > 0:
+        logger.warning(f"OKX entryPrice 无效({raw})，用 markPrice={mark} 兜底")
+        return mark
+    return 0.0
 from app.exchange.client import ExchangeClient
 
 
@@ -38,7 +52,7 @@ class TradeService:
                 return {
                     "side": pos["side"],                    # 持仓方向 long/short
                     "size": float(pos["contracts"]),         # 持仓数量
-                    "entry_price": float(pos.get("entryPrice", 0)),  # 开仓均价
+                    "entry_price": _safe_entry_price(pos),   # 开仓均价(含兜底)
                     "unrealized_pnl": float(pos.get("unrealizedPnl", 0)),  # 未实现盈亏
                 }
         return None
@@ -66,7 +80,7 @@ class TradeService:
             order = await self._exchange.create_order(sym, "market", side, amount)
             # 开仓后设置算法止盈止损单
             await self._set_tp_sl(sym, signal, amount, stop_loss, take_profit)
-            return {"action": "open", "side": side, "amount": amount, "order": order}
+            return {"action": "open", "side": side, "amount": amount, "order": order, "pnl": 0}
 
         if position:
             pos_side = position["side"]  # 当前持仓方向 long / short
@@ -77,19 +91,34 @@ class TradeService:
                 order = await self._exchange.create_order(sym, "market", side, amount)
                 # 更新止盈止损为加仓后总仓位
                 await self._set_tp_sl(sym, signal, position["size"] + amount, stop_loss, take_profit)
-                return {"action": "add", "side": side, "amount": amount, "order": order}
+                return {"action": "add", "side": side, "amount": amount, "order": order, "pnl": 0}
             else:
                 # 信号方向与持仓方向相反 → 先平仓再开新仓
                 close_side = "sell" if pos_side == "long" else "buy"
-                await self._exchange.create_order(sym, "market", close_side, position["size"])
-                # 平仓后开新仓
+                close_size = position["size"]
+                entry_price = position["entry_price"]
+                # 平仓 — 计算平仓盈亏
+                await self._exchange.create_order(sym, "market", close_side, close_size)
+                pnl = self._calc_close_pnl(pos_side, entry_price, price, close_size, sym)
+                # 开新仓
                 side = "buy" if signal == "BUY" else "sell"
                 amount = self._calc_contracts(amount_usdt, price, sym, leverage)
                 order = await self._exchange.create_order(sym, "market", side, amount)
                 await self._set_tp_sl(sym, signal, amount, stop_loss, take_profit)
-                return {"action": "reverse", "side": side, "amount": amount, "order": order}
+                return {"action": "reverse", "side": side, "amount": amount, "order": order, "pnl": pnl}
 
         return None
+
+    # 计算平仓盈亏（USDT）
+    def _calc_close_pnl(self, pos_side: str, entry_price: float, exit_price: float,
+                        contracts: float, symbol: str) -> float:
+        market = self._exchange._exchange.market(symbol)
+        ct_val = market.get("contractSize", 1)  # 每张合约面值（DOGE=100, BTC=0.01）
+        notional = contracts * ct_val  # 持仓总币数
+        if pos_side == "long":
+            return (exit_price - entry_price) * notional
+        else:
+            return (entry_price - exit_price) * notional
 
     # 开仓后挂算法止盈止损单 — 先取消旧单，再分别挂 SL 和 TP
     async def _set_tp_sl(
@@ -177,3 +206,115 @@ class TradeService:
             }
         finally:
             session.close()
+
+    # 从 OKX 拉取个人真实成交记录 — 支持分页、方向筛选、时间范围
+    @staticmethod
+    async def query_okx_trades(
+        symbol: str = "DOGE/USDT:USDT",
+        limit: int = 100,
+        page: int = 1,
+        page_size: int = 20,
+        side: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> dict:
+        from datetime import datetime, timedelta, timezone
+        from app.exchange.client import ExchangeClient
+        from app.core.logger import get_logger
+        _log = get_logger()
+
+        exchange = ExchangeClient()
+
+        # since 时间戳 — 有 start_time 用指定值，否则默认 7 天
+        if start_time:
+            try:
+                since_ms = int(datetime.fromisoformat(start_time).timestamp() * 1000)
+            except ValueError:
+                return {"ok": False, "error": f"start_time 格式错误: {start_time}", "data": [], "total": 0}
+        else:
+            since_ms = int((datetime.now(timezone.utc) - timedelta(days=7)).timestamp() * 1000)
+
+        # end_time 转毫秒
+        end_ms = None
+        if end_time:
+            try:
+                end_ms = int(datetime.fromisoformat(end_time).timestamp() * 1000)
+            except ValueError:
+                pass
+
+        try:
+            raw = await exchange.fetch_my_trades(symbol, since_ms, limit)
+        except Exception as e:
+            _log.error(f"OKX fetch_my_trades 失败: {type(e).__name__}: {e}")
+            return {"ok": False, "error": str(e), "data": [], "total": 0}
+
+        _log.info(f"OKX 返回 {len(raw)} 笔原始成交")
+
+        # 转换 + 筛选
+        all_items = []
+        for t in raw:
+            amount = t.get("amount")
+            price = t.get("price")
+            if amount is None or price is None:
+                continue
+            amount_f = float(amount)
+            if amount_f == 0:
+                continue
+            price_f = float(price)
+
+            trade_side = str(t.get("side", ""))
+            ts = t.get("timestamp", 0)
+
+            # 时间范围过滤
+            if end_ms and ts and ts > end_ms:
+                continue
+            # 方向过滤
+            if side and trade_side != side:
+                continue
+
+            fee_info = t.get("fee") or {}
+            cost_val = t.get("cost")
+            dt = t.get("datetime") or ""
+            if not dt and ts:
+                dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat()
+
+            # OKX fills-history 原始响应在 info 中，pnl 字段名可能是 pnl 或 fillPnl
+            info = t.get("info", {}) or {}
+            raw_pnl = None
+            if isinstance(info, dict):
+                raw_pnl = info.get("pnl") or info.get("fillPnl")
+            if raw_pnl is None:
+                raw_pnl = t.get("pnl")
+
+            all_items.append({
+                "id": str(t.get("id", "")),
+                "order_id": str(t.get("order", "")),
+                "timestamp": str(dt),
+                "symbol": str(t.get("symbol", symbol)),
+                "side": "BUY" if trade_side == "buy" else "SELL",
+                "price": price_f,
+                "amount": amount_f,
+                "cost": float(cost_val) if cost_val else price_f * amount_f,
+                "fee": float(fee_info.get("cost", 0)) if fee_info else 0.0,
+                "fee_currency": str(fee_info.get("currency", "USDT")) if fee_info else "USDT",
+                "role": str(t.get("takerOrMaker", "")),
+                "type": str(t.get("type", "")),
+                "pnl": float(raw_pnl) if raw_pnl else 0.0,
+            })
+
+        # 分页
+        total = len(all_items)
+        total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 0
+        safe_page = max(1, min(page, max(1, total_pages))) if total_pages > 0 else 1
+        start = (safe_page - 1) * page_size
+        paged = all_items[start:start + page_size]
+
+        return {
+            "ok": True,
+            "data": paged,
+            "total": total,
+            "page": safe_page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "symbol": symbol,
+        }

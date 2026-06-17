@@ -15,7 +15,7 @@ from typing import Dict, List
 
 import pandas as pd
 
-from app.strategies.base import BaseStrategy
+from app.services.strategies.strategy_technical import BaseStrategy
 
 
 # 多策略加权汇总后的最终交易信号
@@ -125,11 +125,6 @@ class StrategyService:
     def get_strategy_list() -> dict:
         return {
             "strategies": [
-                {
-                    "name": "DeepSeekStrategy", "type": "ai",
-                    "description": "基于 DeepSeek 大模型的 AI 交易策略",
-                    "timeframe": "1h",
-                },
                 {
                     "name": "TechnicalStrategy", "type": "technical",
                     "description": "基于 SMA + RSI + MACD 的技术指标策略",

@@ -19,7 +19,7 @@ from app.agents.toolkits.toolkit_data import load_data
 from app.agents.toolkits.tools.toolkit_calc_feedback import generate_feedback
 from app.agents.toolkits.communication.toolkit_router import detect_handoff, handle_asks, last_content
 from app.agents.agent_logger import ToolCallLogger, set_current_agent
-from app.agents.agent_status import agent_input, agent_output
+from app.agents.status import agent_input, agent_output
 from app.services.config.runtime import get_runtime
 from app.core.logger import get_logger
 
@@ -45,8 +45,8 @@ class AgentCoordinator3:
         from app.agents.toolkits.toolkit_data import _position, _df
         pos = _position()
         pos_text = (f"持仓: {'多头' if pos['side']=='long' else '空头'} {pos.get('size',0)}张 "
-                    f"入场${pos.get('entry_price',0):.2f} 浮亏${pos.get('unrealized_pnl',0):+.2f} "
-                    f"杠杆{pos.get('leverage',1)}x") if pos and pos.get('side') else "无持仓"
+                    f"入场${pos.get('entry_price',0) or 0:.2f} 浮亏${pos.get('unrealized_pnl',0):+.2f} "
+                    f"杠杆{pos.get('leverage',1)}x") if pos and pos.get('side') and pos.get('entry_price') not in (None, 0) else ("无持仓" if not pos or not pos.get('side') else f"持仓: {'多头' if pos['side']=='long' else '空头'} {pos.get('size',0)}张 入场价未知 浮亏${pos.get('unrealized_pnl',0):+.2f} 杠杆{pos.get('leverage',1)}x")
 
         rt_leverage = int(get_runtime("leverage"))
         rt_order_amount = float(get_runtime("order_amount"))

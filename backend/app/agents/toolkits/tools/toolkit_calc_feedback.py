@@ -19,9 +19,11 @@ def generate_feedback() -> str:
     lines = []
 
     # 有持仓 → 上一次决策执行了
-    if pos and pos.get("side") and pos.get("entry_price"):
+    if pos and pos.get("side") and pos.get("entry_price") is not None:
         pnl = float(pos.get("unrealized_pnl", 0))
         entry = float(pos.get("entry_price", price))
+        if entry <= 0:
+            entry = price
         size = float(pos.get("size", 0))
         direction = "多头" if pos["side"] == "long" else "空头"
         margin = entry * size * 0.01

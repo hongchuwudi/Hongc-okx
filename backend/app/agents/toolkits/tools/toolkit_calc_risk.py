@@ -17,7 +17,9 @@ def evaluate_position_risk() -> str:
     """评估当前持仓风险等级。"""
     pos, pr, eq = _position(), _price(), _equity()
     if not pos or not pos.get("side"): return "风险: 无持仓"
-    pnl = float(pos.get("unrealized_pnl", 0)); entry = float(pos.get("entry_price", pr)); size = float(pos.get("size", 0))
+    raw_entry = pos.get("entry_price")
+    entry = float(raw_entry) if raw_entry is not None and float(raw_entry) > 0 else pr
+    pnl = float(pos.get("unrealized_pnl", 0)); size = float(pos.get("size", 0))
     margin = entry * size * 0.01; ratio = pnl / margin if margin > 0 else 0; mpct = (margin / eq * 100) if eq > 0 else 0
     risks = []
     if ratio < -0.5: risks.append("浮亏超保证金50%")

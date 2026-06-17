@@ -47,7 +47,7 @@ def _redis_key(name: str) -> str:
 async def get_prompt(name: str) -> str:
     """获取完整提示词，Redis 优先，文件兜底（自动追加通用后缀）。"""
     try:
-        from app.database import get_redis
+        from app.core.database import get_redis
         redis = await get_redis()
         text = await redis.get(_redis_key(name))
         if text:
@@ -61,7 +61,7 @@ async def get_prompt(name: str) -> str:
 def get_prompt_sync(name: str) -> str:
     """同步版获取完整提示词，通过同步 Redis 客户端，用于构建 Agent。"""
     try:
-        from app.database.database_redis import get_redis_sync
+        from app.core.database.database_redis import get_redis_sync
         text = get_redis_sync().get(_redis_key(name))
         if text:
             return text
@@ -76,7 +76,7 @@ async def set_prompt(name: str, text: str) -> bool:
     if name not in PROMPT_DEFAULTS:
         return False
     try:
-        from app.database import get_redis
+        from app.core.database import get_redis
         redis = await get_redis()
         await redis.set(_redis_key(name), text)
         await redis.incr(_VERSION_KEY)
@@ -90,7 +90,7 @@ async def reset_prompt(name: str) -> bool:
     if name not in PROMPT_DEFAULTS:
         return False
     try:
-        from app.database import get_redis
+        from app.core.database import get_redis
         redis = await get_redis()
         await redis.delete(_redis_key(name))
         await redis.incr(_VERSION_KEY)
@@ -106,7 +106,7 @@ async def get_all_prompts() -> list[dict]:
         current = default + _H
         modified = False
         try:
-            from app.database import get_redis
+            from app.core.database import get_redis
             redis = await get_redis()
             text = await redis.get(_redis_key(name))
             if text:
@@ -127,7 +127,7 @@ async def get_all_prompts() -> list[dict]:
 async def get_prompt_version() -> int:
     """获取当前提示词版本号。"""
     try:
-        from app.database import get_redis
+        from app.core.database import get_redis
         redis = await get_redis()
         v = await redis.get(_VERSION_KEY)
         return int(v) if v else 0

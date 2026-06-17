@@ -63,7 +63,7 @@ class ToolCallLogger(BaseCallbackHandler):
         if self._loop is None:
             return
         try:
-            from app.agents.agent_status import publish_agent_status
+            from app.agents.status import publish_agent_status
 
             async def _do():
                 await publish_agent_status(event_type, _current_agent(), **kwargs)

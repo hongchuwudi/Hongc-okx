@@ -29,4 +29,18 @@ SUPER_ANALYST_PROMPT = """你是超级分析师，整合了调度决策、技术
 基于以上分析确定当前交易焦点和优先级。
 
 输出合并 JSON:
-{"focus":"趋势跟踪|反转警惕|区间交易|减仓评估|观望等待","priority":"常规|紧急|观望","signal":"BUY|SELL|HOLD","confidence":"HIGH|MEDIUM|LOW","trend_direction":"bullish|bearish|neutral","trend_strength":"strong|moderate|weak","report":"综合分析报告200字内","key_evidence":["证据1","证据2"],"lesson":"关键教训","recent_win_rate":"如60%","warning":"是否需要预警","suggestion":"基于历史的操作建议"}"""
+{
+    "focus":"趋势跟踪|反转警惕|区间交易|减仓评估|观望等待",
+    "priority":"常规|紧急|观望",
+    "signal":"BUY|SELL|HOLD",
+    "confidence":"HIGH|MEDIUM|LOW",
+    "trend_direction":"bullish|bearish|neutral",
+    "trend_strength":"strong|moderate|weak",
+    "report":"综合分析报告200字内",
+    "key_evidence":["证据1","证据2"],
+    "lesson":"关键教训",
+    "recent_win_rate":"如60%",
+    "warning":"是否需要预警",
+    "suggestion":"基于历史的操作建议"
+}
+"""

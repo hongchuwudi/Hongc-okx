@@ -2,21 +2,22 @@
 创建时间: 2026-06-06
 作者: hongchuwudi
 文件名: indicators.py 技术指标计算
-描述: 纯 pandas/numpy 计算函数 — RSI、MACD、SMA、布林带、ATR。不依赖任何框架
+描述: 基于 pandas-ta 的技术指标计算函数 — RSI、MACD、SMA、布林带、ATR。纯计算层，不依赖任何框架
 
 包含:
-- calc_rsi — Wilder 平滑 RSI
-- calc_macd — MACD 线/信号线/柱状图
-- calc_sma — 简单移动平均
-- calc_bollinger — 布林带上中下轨
-- calc_atr — 平均真实波幅
-- calc_volume_ratio — 量比
-- calc_trend — 趋势方向判断
+- calc_rsi — RSI 相对强弱指数（pandas-ta Wilder 平滑）
+- calc_macd — MACD 线/信号线/柱状图（pandas-ta）
+- calc_sma — 简单移动平均（pandas-ta）
+- calc_bollinger — 布林带上中下轨（pandas-ta）
+- calc_atr — 平均真实波幅（pandas-ta）
+- calc_volume_ratio — 量比（无直接 pandas-ta 等价，保留自定义逻辑）
+- calc_trend — 趋势方向判断（pandas-ta SMA）
 - get_price — 当前价格
 """
 
 import numpy as np
 import pandas as pd
+import pandas_ta as ta
 
 from app.agents.toolkits.toolkit_data import _df, _price
 
@@ -27,69 +28,93 @@ def get_price() -> str:
 
 
 def calc_rsi(period: int = 14) -> str:
-    """Wilder 平滑 RSI。"""
+    """RSI 相对强弱指数（pandas-ta Wilder 平滑）。"""
     df = _df()
-    if df.empty or "close" not in df.columns: return "RSI: 无数据"
-    delta = df["close"].diff()
-    gain = delta.clip(lower=0); loss = (-delta).clip(lower=0)
-    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = (100 - 100 / (1 + rs)).iloc[-1]
+    if df.empty or "close" not in df.columns:
+        return "RSI: 无数据"
+    rsi_series = ta.rsi(df["close"], length=period)
+    rsi = rsi_series.iloc[-1]
+    if pd.isna(rsi):
+        return f"RSI({period}): 数据不足"
     label = "超买" if rsi > 70 else ("超卖" if rsi < 30 else "中性")
     return f"RSI({period}): {rsi:.1f} — {label}"
 
 
 def calc_macd(fast: int = 12, slow: int = 26, signal: int = 9) -> str:
-    """MACD 指标。"""
+    """MACD 指标（pandas-ta）。"""
     df = _df()
-    if df.empty or "close" not in df.columns: return "MACD: 无数据"
-    ema_f = df["close"].ewm(span=fast, adjust=False).mean()
-    ema_s = df["close"].ewm(span=slow, adjust=False).mean()
-    macd_line = ema_f - ema_s
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    hist = macd_line - signal_line
-    hv, sv, ph = hist.iloc[-1], signal_line.iloc[-1], (hist.iloc[-2] if len(hist) > 1 else 0)
-    cross = "金叉 ↑" if (ph < 0 < hv) else ("死叉 ↓" if (ph > 0 > hv) else "无交叉")
+    if df.empty or "close" not in df.columns:
+        return "MACD: 无数据"
+    macd_df = ta.macd(df["close"], fast=fast, slow=slow, signal=signal)
+    # pandas-ta 列名: MACD_fast_slow_signal, MACDh_fast_slow_signal, MACDs_fast_slow_signal
+    macd_col = f"MACD_{fast}_{slow}_{signal}"
+    signal_col = f"MACDs_{fast}_{slow}_{signal}"
+    hist_col = f"MACDh_{fast}_{slow}_{signal}"
+    hv = macd_df[hist_col].iloc[-1]
+    sv = macd_df[signal_col].iloc[-1]
+    mv = macd_df[macd_col].iloc[-1]
+    if pd.isna(hv):
+        return "MACD: 数据不足"
+    ph = macd_df[hist_col].iloc[-2] if len(macd_df) > 1 else 0
+    cross = "金叉" if (ph < 0 < hv) else ("死叉" if (ph > 0 > hv) else "无交叉")
     d = "扩大" if abs(hv) > abs(ph) else "收缩"
-    return f"MACD: {macd_line.iloc[-1]:.2f} | 信号: {sv:.2f} | 柱: {hv:.2f}({d}) | {cross}"
+    return f"MACD: {mv:.2f} | 信号: {sv:.2f} | 柱: {hv:.2f}({d}) | {cross}"
 
 
 def calc_sma(period: int) -> str:
-    """简单移动平均。"""
-    df = _df(); price = _price()
-    if df.empty or "close" not in df.columns: return f"SMA{period}: 无数据"
-    sma = df["close"].rolling(period).mean().iloc[-1]
-    if pd.isna(sma) or sma == 0: return f"SMA{period}: 数据不足"
+    """简单移动平均（pandas-ta）。"""
+    df = _df()
+    price = _price()
+    if df.empty or "close" not in df.columns:
+        return f"SMA{period}: 无数据"
+    sma_series = ta.sma(df["close"], length=period)
+    sma = sma_series.iloc[-1]
+    if pd.isna(sma) or sma == 0:
+        return f"SMA{period}: 数据不足"
     return f"SMA{period}: {sma:.1f} (价格偏离{(price - sma) / sma * 100:+.2f}%)"
 
 
 def calc_bollinger(period: int = 20, std_dev: float = 2.0) -> str:
-    """布林带。"""
-    df = _df(); price = _price()
-    if df.empty or "close" not in df.columns: return "布林带: 无数据"
-    sma = df["close"].rolling(period).mean().iloc[-1]
-    std = df["close"].rolling(period).std().iloc[-1]
-    upper, lower = sma + std_dev * std, sma - std_dev * std
-    br = upper - lower; pos = (price - lower) / br if br > 0 else 0.5
-    w = (upper - lower) / sma * 100 if sma > 0 else 0
-    return f"布林带: 上{upper:.0f} 中{sma:.0f} 下{lower:.0f} | 价格位置:{pos:.1%} (带宽{w:.1f}%)"
+    """布林带（pandas-ta）。"""
+    df = _df()
+    price = _price()
+    if df.empty or "close" not in df.columns:
+        return "布林带: 无数据"
+    bb_df = ta.bbands(df["close"], length=period, lower_std=std_dev, upper_std=std_dev)
+    # pandas-ta 列名: BBL_length_lowerStd_upperStd, BBM_..., BBU_...
+    suffix = f"{period}_{std_dev}_{std_dev}"
+    upper_col = f"BBU_{suffix}"
+    mid_col = f"BBM_{suffix}"
+    lower_col = f"BBL_{suffix}"
+    upper = bb_df[upper_col].iloc[-1]
+    mid = bb_df[mid_col].iloc[-1]
+    lower = bb_df[lower_col].iloc[-1]
+    if pd.isna(mid):
+        return "布林带: 数据不足"
+    br = upper - lower
+    pos = (price - lower) / br if br > 0 else 0.5
+    w = (upper - lower) / mid * 100 if mid > 0 else 0
+    return f"布林带: 上{upper:.0f} 中{mid:.0f} 下{lower:.0f} | 价格位置:{pos:.1%} (带宽{w:.1f}%)"
 
 
 def calc_atr(period: int = 14) -> str:
-    """平均真实波幅。"""
-    df = _df(); price = _price()
-    if df.empty or "close" not in df.columns: return "ATR: 无数据"
-    h, l, c = df["high"], df["low"], df["close"]
-    tr = pd.concat([h - l, abs(h - c.shift()), abs(l - c.shift())], axis=1).max(axis=1)
-    atr_v = tr.ewm(alpha=1 / period, adjust=False).mean().iloc[-1]
+    """平均真实波幅（pandas-ta）。"""
+    df = _df()
+    price = _price()
+    if df.empty or "close" not in df.columns:
+        return "ATR: 无数据"
+    atr_series = ta.atr(df["high"], df["low"], df["close"], length=period)
+    atr_v = atr_series.iloc[-1]
+    if pd.isna(atr_v):
+        return "ATR: 数据不足"
     return f"ATR: {atr_v:.1f} ({atr_v / price * 100:.2f}%)" if price > 0 else f"ATR: {atr_v:.1f}"
 
 
 def calc_volume_ratio(period: int = 20) -> str:
-    """量比。"""
+    """量比（无直接 pandas-ta 等价，保留自定义逻辑）。"""
     df = _df()
-    if df.empty or "volume" not in df.columns: return "量比: 无数据"
+    if df.empty or "volume" not in df.columns:
+        return "量比: 无数据"
     avg = df["volume"].rolling(period).mean().iloc[-1]
     r = df["volume"].iloc[-1] / avg if avg > 0 else 1
     l = "异常放量" if r > 2 else ("异常缩量" if r < 0.5 else "正常")
@@ -97,10 +122,15 @@ def calc_volume_ratio(period: int = 20) -> str:
 
 
 def calc_trend() -> str:
-    """趋势综合分析。"""
-    df = _df(); price = _price()
-    if df.empty or "close" not in df.columns: return "趋势: 无数据"
-    smas = [df["close"].rolling(p).mean().iloc[-1] for p in (5, 20, 50)]; s5, s20, s50 = smas
+    """趋势综合分析（pandas-ta SMA）。"""
+    df = _df()
+    price = _price()
+    if df.empty or "close" not in df.columns:
+        return "趋势: 无数据"
+    smas = [ta.sma(df["close"], length=p).iloc[-1] for p in (5, 20, 50)]
+    s5, s20, s50 = smas
+    if any(pd.isna(s) for s in smas):
+        return "趋势: 数据不足"
     short = "bullish" if price > s5 else ("bearish" if price < s5 else "neutral")
     med = "bullish" if s5 > s20 > s50 else ("bearish" if s5 < s20 < s50 else "neutral")
     overall = short if short == med else "震荡/分歧"

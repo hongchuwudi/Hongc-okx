@@ -14,7 +14,7 @@ from datetime import datetime
 from langchain_core.tools import tool
 from sqlalchemy.orm import Session
 
-from app.database import get_sync_session
+from app.core.database import get_sync_session
 from app.entities.agent_private_memory import AgentPrivateMemory
 
 _lock = threading.Lock()

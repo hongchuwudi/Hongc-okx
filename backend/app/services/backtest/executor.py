@@ -5,7 +5,7 @@
 
 包含:
 - 函数: _ensure_run — 创建或合并 BacktestRun 数据库记录
-- 函数: _build_strategy — 策略实例工厂（technical / deepseek）
+- 函数: _build_strategy — 策略实例工厂
 - 函数: _save_run_result — 将回测结果写入 BacktestRun 并提交数据库
 - 函数: _config_json — 生成回测配置 JSON 字符串
 """
@@ -47,34 +47,9 @@ def _ensure_run(
 
 # 策略实例工厂 — 根据策略类型创建策略对象，返回 (策略实例, 调整后的 data_limit)
 def _build_strategy(strategy: str, symbol: str, timeframe: str, data_limit: int, temperature: float = 0.1):
-    # 纯技术指标策略
     if strategy == "technical":
-        from app.strategies.technical import TechnicalStrategy
+        from app.services.strategies.strategy_technical import TechnicalStrategy
         return TechnicalStrategy(), data_limit
-
-    # DeepSeek AI 策略
-    if strategy == "deepseek":
-        from app.strategies.deepseek import DeepSeekStrategy
-        from openai import OpenAI
-        import httpx
-        from app.config import config as app_config
-
-        # DeepSeek 回测有数据量上限
-        data_limit = min(data_limit, 500)
-        # 创建 OpenAI 客户端指向 DeepSeek API
-        client = OpenAI(
-            api_key=app_config.ai.deepseek_api_key,
-            base_url=app_config.ai.deepseek_base_url,
-            http_client=httpx.Client(proxy=None),
-            timeout=30,
-        )
-        # 构造策略所需的配置字典
-        strategy_instance = DeepSeekStrategy({
-            "symbol": symbol, "timeframe": timeframe, "leverage": 1,
-            "backtest": True, "backtest_interval": max(1, data_limit // 50),
-            "temperature": temperature,
-        }, client)
-        return strategy_instance, data_limit
 
     raise BusinessError(f"未知策略: {strategy}")
 

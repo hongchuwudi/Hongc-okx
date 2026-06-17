@@ -16,9 +16,9 @@ from typing import Optional
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.database import get_sync_session
+from app.core.database import get_sync_session
 from app.entities.backtest import BacktestRun
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ExternalServiceError, AppError
 from app.core.logger import get_logger
 from app.services.backtest.serializer import run_summary, run_detail
 from app.services.backtest.executor import (
@@ -91,7 +91,9 @@ class BacktestService:
                     session.commit()
             except Exception:
                 pass
-            raise
+            if isinstance(e, AppError):
+                raise
+            raise ExternalServiceError(str(e)) from e
         finally:
             session.close()
 
@@ -273,7 +275,7 @@ class BacktestService:
 def _push_sync(event: dict):
     try:
         import json as _json
-        from app.database import redis_publish
+        from app.core.database import redis_publish
         # 将事件序列化后发布到 Redis 频道
         redis_publish("ws:channel:updates", _json.dumps(event, ensure_ascii=False, default=str))
         logger.info(f"WS推送: {event.get('type')} run_id={event.get('run_id')}")

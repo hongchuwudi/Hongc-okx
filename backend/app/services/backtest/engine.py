@@ -11,9 +11,10 @@ Contains:
 import pandas as pd
 from typing import Optional
 
-from app.strategies.base import BaseStrategy
+from app.services.strategies.strategy_technical import BaseStrategy
 from app.services.backtest.engine_helpers import _check_stop, _close_position, _to_native, _to_ms
 from app.services.backtest.engine_metrics import _compute_metrics
+from app.core.exceptions import BusinessError
 
 
 # 逐根 K 线重放策略逻辑（生成器版），每根 K 线 yield 一次进度事件，支持 SSE 流式推送到前端。
@@ -166,7 +167,7 @@ def run_backtest_stream(
     yield {"type": "done", **native}
 
 
-# 逐根 K 线重放策略逻辑，模拟真实交易。 每根 K 线先检测止盈止损是否触发，再生成交易信号。 支持 TechnicalStrategy 和 DeepSeekStrategy。 返回包含交易记录、权益曲线和性能指标的字典。
+# 逐根 K 线重放策略逻辑，模拟真实交易。 每根 K 线先检测止盈止损是否触发，再生成交易信号。 支持 TechnicalStrategy。 返回包含交易记录、权益曲线和性能指标的字典。
 def run_backtest(
     df: pd.DataFrame,
     strategy: BaseStrategy,
@@ -177,7 +178,7 @@ def run_backtest(
     timeframe: str = "1h",
 ) -> dict:
     if len(df) < warmup + 5:
-        raise ValueError(f"数据不足，需要至少 {warmup + 5} 条 K 线，实际 {len(df)} 条")
+        raise BusinessError(f"数据不足，需要至少 {warmup + 5} 条 K 线，实际 {len(df)} 条")
 
     df = df.reset_index(drop=True)
     capital = initial_capital

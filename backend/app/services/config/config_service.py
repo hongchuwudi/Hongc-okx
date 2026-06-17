@@ -11,9 +11,9 @@
 import json
 from dataclasses import asdict
 
-from app.database import get_sync_session
+from app.core.database import get_sync_session
 from app.entities.system_config import SystemConfig
-from app.config.config_trade import TradeConfig
+from app.core.config.config_trade import TradeConfig
 from app.services.config.runtime import set_runtime_batch, delete_runtime
 
 # 默认配置（从 TradeConfig 数据类提取为 dict）

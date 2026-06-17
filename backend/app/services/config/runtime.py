@@ -21,8 +21,8 @@ import pathlib
 
 import redis
 
-from app.config import config
-from app.config.config_trade import TradeConfig
+from app.core.config import config
+from app.core.config.config_trade import TradeConfig
 
 REDIS_KEY = "trading:runtime_config"
 
@@ -241,7 +241,7 @@ def sync_runtime_to_env() -> str | None:
 
 async def get_runtime_async(key: str):
     """异步读取运行时配置，Redis 优先。未命中则从 env 取值并回写 Redis。"""
-    from app.database.database_redis import get_redis
+    from app.core.database.database_redis import get_redis
     conv, default = _TYPE_MAP[key]
     try:
         r = await get_redis()

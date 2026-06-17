@@ -17,8 +17,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.config import config
-from app.database import get_redis
+from app.core.config import config
+from app.core.database import get_redis
 from app.services.config.runtime import get_runtime
 
 # 熔断阈值

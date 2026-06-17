@@ -11,8 +11,8 @@
 import time
 from typing import Optional
 
-from app.config import config
-from app.database import get_sync_session
+from app.core.config import config
+from app.core.database import get_sync_session
 from app.services.config.runtime import get_runtime
 from app.entities.system import SystemStatus
 from app.entities.trading import EquitySnapshot, Trade

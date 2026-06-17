@@ -12,7 +12,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.database import get_sync_session
+from app.core.database import get_sync_session
 from app.entities.memory import TradeMemory
 
 

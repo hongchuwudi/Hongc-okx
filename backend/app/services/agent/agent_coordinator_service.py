@@ -29,12 +29,12 @@ class AgentCoordinatorService:
 
     # 构建 PositionManager（动态追踪止损）
     def create_position_manager(self, exchange, symbol: str):
-        from app.agents.position_manager import PositionManager
+        from app.services.trading.position_manager import PositionManager
         return PositionManager(exchange, symbol)
 
     # IndicatorService — 纯指标计算工具集
     def get_indicator_service(self):
-        import app.agents.indicator_service as svc
+        import app.agents.indicator as svc
         return svc
 
     # Agent 输出 JSON 解析器

@@ -11,7 +11,7 @@
 import httpx
 from langchain_openai import ChatOpenAI
 
-from app.config import config
+from app.core.config import config
 
 _llm: ChatOpenAI | None = None
 

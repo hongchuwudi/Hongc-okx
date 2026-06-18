@@ -22,7 +22,7 @@ from app.api.v1.backtest import router as backtest_router
 from app.api.v1.agents import router as agents_router
 from app.api.v1.config import router as config_router
 from app.api.ws import router as ws_router
-from app.database import init_db
+from app.core.database import init_db
 from app.core.exceptions import AppError
 from app.core.logger import get_logger
 

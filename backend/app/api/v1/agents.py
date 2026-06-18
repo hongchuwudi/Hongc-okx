@@ -60,5 +60,5 @@ async def api_reload_agents():
 
 @router.get("/decisions")
 def api_get_decisions(page: int = 1, page_size: int = 20):
-    from app.agents.agent_status import query_agent_decisions
+    from app.agents.status import query_agent_decisions
     return query_agent_decisions(page, page_size)

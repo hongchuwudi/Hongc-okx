@@ -17,7 +17,7 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.database import get_redis_pubsub
+from app.core.database import get_redis_pubsub
 from app.core.logger import get_logger
 
 router = APIRouter()

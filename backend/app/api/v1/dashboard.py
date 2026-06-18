@@ -92,7 +92,7 @@ async def api_reset_circuit():
 
 @router.get("/agents/logs")
 async def api_agent_logs(limit: int = Query(5, ge=1, le=10)):
-    from app.agents.agent_status import get_recent_agent_logs
+    from app.agents.status import get_recent_agent_logs
     return await get_recent_agent_logs(limit)
 
 
@@ -102,7 +102,7 @@ async def api_agent_logs_paginated(
     page_size: int = Query(20, ge=5, le=100),
     mode: str = Query("", description="按模式过滤"),
 ):
-    from app.agents.agent_status import get_agent_logs_paginated
+    from app.agents.status import get_agent_logs_paginated
     return await get_agent_logs_paginated(page, page_size)
 
 

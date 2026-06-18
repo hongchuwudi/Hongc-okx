@@ -11,11 +11,12 @@
 
 import ccxt
 
-from app.config import config
+from app.core.config import config
 from app.exchange.okx.okx_market import OkxMarket
 from app.exchange.okx.okx_account import OkxAccount
 from app.exchange.okx.okx_trade import OkxTrade
 from app.exchange.okx.okx_setup import OkxSetup
+from app.core.exceptions import ExternalServiceError
 from app.core.logger import get_logger
 
 logger = get_logger()
@@ -81,10 +82,23 @@ def get_okx_ohlcv(symbol: str, timeframe: str, limit: int) -> list:
 
     try:
         return _do_fetch(_okx_proxy)
+    except ccxt.RequestTimeout:
+        # 请求超时不等于代理不通，直接重试一次
+        logger.warning(f"代理 {_okx_proxy} 请求超时，重试")
+        try:
+            return _do_fetch(_okx_proxy)
+        except Exception:
+            backup = config.okx.proxy_backup
+            if not backup or _okx_proxy == backup:
+                raise ExternalServiceError("OKX 请求超时，重试和代理切换均失败")
+            logger.warning(f"超时重试失败，切到备用代理: {backup}")
+            _okx_proxy = backup
+            _okx_probe = 0
+            return _do_fetch(backup)
     except Exception:
         backup = config.okx.proxy_backup
         if not backup or _okx_proxy == backup:
-            raise
+            raise ExternalServiceError("OKX API 调用失败，代理切换不可用")
         logger.warning(f"代理 {_okx_proxy} 不通，切到备用: {backup}")
         _okx_proxy = backup
         _okx_probe = 0
@@ -169,6 +183,9 @@ class ExchangeClient:
 
     async def fetch_open_algo_orders(self, *args, **kwargs):
         return await self.trade.fetch_open_algo_orders(*args, **kwargs)
+
+    async def fetch_my_trades(self, *args, **kwargs):
+        return await self.trade.fetch_my_trades(*args, **kwargs)
 
     async def set_position_mode(self, *args, **kwargs):
         return await self.setup.set_position_mode(*args, **kwargs)

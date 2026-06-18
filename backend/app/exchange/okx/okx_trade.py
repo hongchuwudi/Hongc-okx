@@ -75,3 +75,9 @@ class OkxTrade(BaseExchangeClient):
             {"instId": okx_symbol, "ordType": ord_type}
         ))
         return result.get("data", [])
+
+    # 从 OKX 拉取个人成交历史。
+    # since 为毫秒时间戳，不传则默认最近 24 小时
+    async def fetch_my_trades(self, symbol: str, since: int | None = None,
+                              limit: int = 50) -> List[dict]:
+        return await self._run(self._ex.fetch_my_trades, symbol, since, limit)

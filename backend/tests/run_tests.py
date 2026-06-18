@@ -62,7 +62,7 @@ def run_quick() -> int:
 
     args = [
         sys.executable, "-m", "pytest",
-        str(Path(__file__).parent / "toolkits" / "test_calc.py"),
+        str(Path(__file__).parent / "unit" / "indicators" / "test_calc.py"),
         f"--junit-xml={xml_path}",
         "-v",
     ]

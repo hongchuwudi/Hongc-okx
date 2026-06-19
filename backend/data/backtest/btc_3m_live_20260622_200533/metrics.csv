@@ -1,0 +1,2 @@
+initial_capital,final_equity,total_return_pct,total_trades,winning_trades,losing_trades,win_rate,profit_factor,max_drawdown_pct,sharpe_ratio,avg_trade_pnl,avg_win,avg_loss,avg_bars_held
+1000.0,888.64,-11.14,115,16,99,13.91,0.18,11.46,-59.04,-0.9946,1.5961,1.4132,15.6

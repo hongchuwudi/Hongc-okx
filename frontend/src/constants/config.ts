@@ -1,23 +1,12 @@
 /**
  * 创建时间: 2026-06-14
  * 作者: hongchuwudi
- * 描述: 运行时配置侧边栏常量 — 字段标签、选项、提示
+ * 描述: 运行时配置侧边栏数据 — 字段选项、提示文案、字段定义数组
+ *
+ * 注意: ConfigFieldMeta 类型定义在 types/config.ts 中
  */
 
-import type { ReactNode } from 'react'
-
-// 字段元信息
-export interface ConfigFieldMeta {
-  key: string
-  label: string
-  type: 'select' | 'number'
-  options?: { label: string; value: string }[]
-  step?: number
-  min?: number
-  max?: number
-  hint?: string
-  instant: boolean  // true=即时生效，false=重启后生效
-}
+import type { ConfigFieldMeta } from '@/types/config'
 
 // 执行方案选项
 export const AGENT_MODE_OPTIONS = [

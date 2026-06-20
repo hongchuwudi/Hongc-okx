@@ -18,14 +18,24 @@ export const THEMES: ThemeConfig[] = [
     label: '浅色',
     daisy: 'light',
     antdAlgorithm: antdTheme.defaultAlgorithm,
-    icon: 'sun',
   },
   {
     id: 'dark',
     label: '深色',
     daisy: 'dark',
     antdAlgorithm: antdTheme.darkAlgorithm,
-    icon: 'moon',
+  },
+  {
+    id: 'forest',
+    label: '森林',
+    daisy: 'forest',
+    antdAlgorithm: antdTheme.darkAlgorithm,
+  },
+  {
+    id: 'valentine',
+    label: '情人节',
+    daisy: 'valentine',
+    antdAlgorithm: antdTheme.defaultAlgorithm,
   },
 ]
 

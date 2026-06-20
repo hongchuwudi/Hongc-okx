@@ -1,10 +1,10 @@
 /**
  * 创建时间: 2026-06-16
  * 作者: hongchuwudi
- * 描述: 通用输入框组件 — 统一替代原生 input，支持文本/数字/密码/邮箱/复选框/开关
+ * 描述: 通用输入框组件 — daisyUI 5 label.input 模式，统一替代原生 input
  *
  * 包含:
- * - 组件: FormInput — 通用输入框，自动适配 DaisyUI 样式
+ * - 组件: FormInput — 文本/数字/密码/邮箱/复选框/开关
  */
 
 import React from 'react'
@@ -46,21 +46,21 @@ export type FormInputProps = TextInputProps | CheckInputProps
 // 工具
 // ---------------------------------------------------------------------------
 
-const SIZE_MAP: Record<Size, string> = {
+const INPUT_SIZE: Record<Size, string> = {
   xs: 'input-xs',
   sm: 'input-sm',
   md: 'input-md',
   lg: 'input-lg',
 }
 
-const CHECK_SIZE_MAP: Record<Size, string> = {
+const CHECK_SIZE: Record<Size, string> = {
   xs: 'checkbox-xs',
   sm: 'checkbox-sm',
   md: 'checkbox-md',
   lg: 'checkbox-lg',
 }
 
-const TOGGLE_SIZE_MAP: Record<Size, string> = {
+const TOGGLE_SIZE: Record<Size, string> = {
   xs: 'toggle-xs',
   sm: 'toggle-sm',
   md: 'toggle-md',
@@ -77,8 +77,8 @@ export default function FormInput(props: FormInputProps) {
   // ── 复选框 / 开关 ──────────────────────────────────
   if ('checked' in props) {
     const isToggle = props.type === 'toggle'
-    const baseClass = isToggle ? 'toggle' : 'checkbox'
-    const sizeClass = isToggle ? TOGGLE_SIZE_MAP[size] : CHECK_SIZE_MAP[size]
+    const base = isToggle ? 'toggle' : 'checkbox'
+    const sz = isToggle ? TOGGLE_SIZE[size] : CHECK_SIZE[size]
 
     const el = (
       <input
@@ -88,7 +88,7 @@ export default function FormInput(props: FormInputProps) {
         disabled={disabled}
         onBlur={onBlur}
         onKeyDown={onKeyDown}
-        className={`${baseClass} ${sizeClass} ${className}`.trim()}
+        className={`${base} ${sz} ${className}`.trim()}
       />
     )
 
@@ -104,17 +104,32 @@ export default function FormInput(props: FormInputProps) {
   }
 
   // ── 文本 / 数字 / 密码 / 邮箱 ──────────────────────
-  const {
-    type = 'text',
-    value,
-    onChange,
-    placeholder,
-    step,
-    min,
-    max,
-  } = props
+  const { type = 'text', value, onChange, placeholder, step, min, max } = props
 
-  const inputEl = (
+  // daisyUI 5 模式: label 作为容器，类名加在 label 上
+  if (label) {
+    return (
+      <label className={`input ${INPUT_SIZE[size]} ${disabled ? 'input-disabled' : ''} shadow-sm flex items-center gap-2 ${className}`.trim()}>
+        <span className="label text-xs text-base-content/50 shrink-0">{label}</span>
+        <input
+          type={type}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          step={step}
+          min={min}
+          max={max}
+          onBlur={onBlur}
+          onKeyDown={onKeyDown}
+          className="grow bg-transparent outline-none text-sm placeholder:text-base-content/20"
+        />
+      </label>
+    )
+  }
+
+  // 无标签：input 类直接加在 input 上
+  return (
     <input
       type={type}
       value={value}
@@ -126,18 +141,7 @@ export default function FormInput(props: FormInputProps) {
       max={max}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
-      className={`input ${SIZE_MAP[size]} ${className}`.trim()}
+      className={`input ${INPUT_SIZE[size]} shadow-sm ${className}`.trim()}
     />
   )
-
-  if (label) {
-    return (
-      <label className="form-control">
-        <span className="label-text text-xs text-base-content/60 mb-1">{label}</span>
-        {inputEl}
-      </label>
-    )
-  }
-
-  return inputEl
 }

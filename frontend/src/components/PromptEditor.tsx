@@ -9,7 +9,7 @@
  * - EditorSettingsBar — 展开的设置面板（字体/换行/Tab）
  */
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useEditorSettingsStore } from '@/stores/editorSettingsStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { Settings, RotateCcw, Save, Minus, Plus, WrapText } from 'lucide-react'
@@ -58,7 +58,6 @@ export default function PromptEditor({
           fontSize={settings.fontSize}
           tabSize={settings.tabSize}
           wordWrap={settings.wordWrap}
-          isDark={isDark}
           onFontSize={(n) => update({ fontSize: n })}
           onTabSize={(n) => update({ tabSize: n })}
           onWordWrap={(v) => update({ wordWrap: v })}
@@ -147,7 +146,6 @@ interface SettingsBarProps {
   fontSize: number
   tabSize: number
   wordWrap: boolean
-  isDark: boolean
   onFontSize: (n: number) => void
   onTabSize: (n: number) => void
   onWordWrap: (v: boolean) => void
@@ -156,7 +154,7 @@ interface SettingsBarProps {
 const FONT_SIZES = [10, 11, 12, 13, 14, 16, 18]
 const TAB_SIZES = [2, 4, 8]
 
-function EditorSettingsBar({ fontSize, tabSize, wordWrap, isDark, onFontSize, onTabSize, onWordWrap }: SettingsBarProps) {
+function EditorSettingsBar({ fontSize, tabSize, wordWrap, onFontSize, onTabSize, onWordWrap }: SettingsBarProps) {
   const decFont = () => { const i = FONT_SIZES.indexOf(fontSize); if (i > 0) onFontSize(FONT_SIZES[i - 1]) }
   const incFont = () => { const i = FONT_SIZES.indexOf(fontSize); if (i < FONT_SIZES.length - 1) onFontSize(FONT_SIZES[i + 1]) }
 

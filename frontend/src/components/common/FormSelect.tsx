@@ -1,13 +1,12 @@
 /**
  * 创建时间: 2026-06-16
  * 作者: hongchuwudi
- * 描述: 通用下拉框组件 — 统一替代原生 select，与 FormInput 对等
+ * 描述: 通用下拉选择组件 — daisyUI dropdown 模式
  *
  * 包含:
- * - 组件: FormSelect — 通用下拉框，自动适配 DaisyUI 样式
+ * - 组件: FormSelect — 点击弹出选项菜单
+ * - 类型: FormSelectProps / FormSelectOption
  */
-
-import React from 'react'
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -15,12 +14,14 @@ import React from 'react'
 
 type Size = 'xs' | 'sm' | 'md' | 'lg'
 
-interface FormSelectOption {
+export interface FormSelectOption {
   label: string
   value: string
+  disabled?: boolean
 }
 
 export interface FormSelectProps {
+  name?: string
   label?: string
   size?: Size
   value: string
@@ -29,17 +30,20 @@ export interface FormSelectProps {
   disabled?: boolean
   className?: string
   placeholder?: string
+  required?: boolean
+  hint?: string
+  error?: boolean
 }
 
 // ---------------------------------------------------------------------------
-// 工具
+// 常量
 // ---------------------------------------------------------------------------
 
-const SIZE_MAP: Record<Size, string> = {
-  xs: 'select-xs',
-  sm: 'select-sm',
-  md: 'select-md',
-  lg: 'select-lg',
+const TRIGGER_SIZE: Record<Size, string> = {
+  xs: 'btn-xs',
+  sm: 'btn-sm',
+  md: 'btn-md',
+  lg: 'btn-lg',
 }
 
 // ---------------------------------------------------------------------------
@@ -55,31 +59,62 @@ export default function FormSelect({
   disabled = false,
   className = '',
   placeholder,
+  required = false,
+  hint,
+  error = false,
 }: FormSelectProps) {
-  const selectEl = (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      disabled={disabled}
-      className={`select ${SIZE_MAP[size]} ${className}`.trim()}
-    >
-      {placeholder && (
-        <option value="" disabled>{placeholder}</option>
-      )}
-      {options.map(opt => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
-      ))}
-    </select>
+  const selected = options.find(o => o.value === value)
+
+  const hintEl = hint && (
+    <span className={`text-xs ${error ? 'text-error' : 'text-base-content/40'}`}>
+      {hint}
+    </span>
+  )
+
+  const dropdown = (
+    <div className={`dropdown dropdown-bottom dropdown-end ${label ? 'min-w-0 flex-1' : className}`}>
+      <div tabIndex={0} role="button" className={`btn ${TRIGGER_SIZE[size]} ${error ? 'btn-error' : ''} ${disabled ? 'btn-disabled' : ''} w-full`}>
+        {selected?.label ?? placeholder ?? value}
+      </div>
+      <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-1 w-52 p-2 shadow-sm">
+        {options.map(opt => (
+          <li key={opt.value}>
+            <a
+              className={opt.value === value ? 'active' : ''}
+              onClick={e => {
+                e.preventDefault()
+                if (opt.disabled) return
+                onChange(opt.value)
+                ;(e.currentTarget.closest('.dropdown')?.querySelector('[tabindex]') as HTMLElement)?.blur()
+              }}
+            >
+              {opt.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 
   if (label) {
     return (
-      <label className="form-control">
-        <span className="label-text text-xs text-base-content/60 mb-1">{label}</span>
-        {selectEl}
-      </label>
+      <div>
+        <label className="flex items-center gap-2">
+          <span className="text-xs text-base-content/50 shrink-0">
+            {label}
+            {required && <span className="text-error ml-0.5">*</span>}
+          </span>
+          {dropdown}
+        </label>
+        {hintEl}
+      </div>
     )
   }
 
-  return selectEl
+  return (
+    <>
+      {dropdown}
+      {hintEl}
+    </>
+  )
 }

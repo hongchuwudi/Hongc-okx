@@ -6,6 +6,7 @@
 
 import type { BacktestRunItem, BacktestTrade } from '../backtest'
 import type { OhlcvBar } from '../kline'
+import type { Position, MarketInfo, AiSignal } from '../dashboard'
 
 // ChartCard — 权益曲线卡片
 export interface ChartCardProps {
@@ -35,6 +36,15 @@ export interface FormFieldProps {
 // FormInputProps — 通用输入框（re-export from component）
 export type { FormInputProps } from '@/components/common/FormInput'
 
+// FormSelectProps / FormSelectOption — 通用下拉框（re-export from component）
+export type { FormSelectProps, FormSelectOption } from '@/components/common/FormSelect'
+
+// FormCheckProps — 通用选项框（re-export from component）
+export type { FormCheckProps } from '@/components/common/FormCheck'
+
+// DropdownProps / DropdownOption — 通用下拉菜单（re-export from component）
+export type { DropdownProps, DropdownOption } from '@/components/common/Dropdown'
+
 // SelectField — 下拉选择字段
 export interface SelectFieldProps extends FormFieldProps {
   value: string
@@ -62,7 +72,7 @@ export interface ResultCardsProps {
 // PositionCard — 持仓详情卡片
 export interface PositionCardProps {
   /** 当前持仓，无持仓时为 null（此时卡片不渲染） */
-  position: import('../dashboard').Position
+  position: Position
   /** 当前最新价 */
   currentPrice: number
   /** 账户杠杆倍数 */
@@ -76,9 +86,9 @@ export interface PositionCardProps {
 // StatusBar — 仪表盘顶栏
 export interface StatusBarProps {
   agentMode: string
-  market: import('../dashboard').MarketInfo | null
-  position: import('../dashboard').Position | null
-  aiSignal: import('../dashboard').AiSignal | null
+  market: MarketInfo | null
+  position: Position | null
+  aiSignal: AiSignal | null
   wsConnected: boolean
 }
 

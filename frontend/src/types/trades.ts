@@ -24,3 +24,32 @@ export interface TradePage {
   total: number
   total_pages: number
 }
+
+// GET /api/v1/trades/okx (OKX 真实成交记录)
+export interface OkxTrade {
+  id: string
+  order_id: string
+  timestamp: string
+  symbol: string
+  side: 'BUY' | 'SELL'
+  price: number
+  amount: number
+  cost: number
+  fee: number
+  fee_currency: string
+  role: string       // taker / maker
+  type: string       // limit / market
+  pnl: number        // OKX 返回的已实现盈亏
+}
+
+// OKX 成交分页响应
+export interface OkxTradePage {
+  ok: boolean
+  data: OkxTrade[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  symbol: string
+  error?: string
+}

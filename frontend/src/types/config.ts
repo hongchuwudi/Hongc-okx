@@ -20,6 +20,19 @@ export interface ConfigData {
   sandbox: boolean
 }
 
+// 配置侧边栏字段元信息 — 描述每个配置项的展示和校验规则
+export interface ConfigFieldMeta {
+  key: string
+  label: string
+  type: 'select' | 'number'
+  options?: { label: string; value: string }[]
+  step?: number
+  min?: number
+  max?: number
+  hint?: string
+  instant: boolean  // true=即时生效，false=重启后生效
+}
+
 // PUT /api/v1/config 或 /api/v1/config/runtime 请求体（所有字段可选）
 export interface ConfigUpdate {
   symbol?: string

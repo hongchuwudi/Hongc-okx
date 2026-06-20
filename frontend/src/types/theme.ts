@@ -11,7 +11,7 @@
 import type { theme as antdTheme } from 'antd'
 
 /** 主题标识 */
-export type ThemeMode = 'light' | 'dark'
+export type ThemeMode = 'light' | 'dark' | 'forest' | 'valentine'
 
 /** 单个主题配置 */
 export interface ThemeConfig {
@@ -23,6 +23,4 @@ export interface ThemeConfig {
   daisy: string
   /** Ant Design 主题算法 */
   antdAlgorithm: typeof antdTheme.defaultAlgorithm | typeof antdTheme.darkAlgorithm
-  /** 图标（lucide-react 名称） */
-  icon: string
 }

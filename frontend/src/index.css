@@ -3,7 +3,7 @@
 
 /* DaisyUI — 只加载 light + dark，其余内置主题全部排除 */
 @plugin "daisyui" {
-  themes: light --default, dark;
+  themes: light --default, dark, forest, valentine;
 }
 
 /* ====== 自定义 light 主题 ====== */

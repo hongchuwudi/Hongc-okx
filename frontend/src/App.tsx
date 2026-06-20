@@ -8,7 +8,7 @@
 
 import { useEffect } from 'react'
 import { BrowserRouter, useRoutes } from 'react-router-dom'
-import { ConfigProvider, theme as antdTheme } from 'antd'
+import { ConfigProvider } from 'antd'
 import { useDashboardStore } from './stores/dashboardStore'
 import { useThemeStore } from './stores/themeStore'
 import routes from './routes'

@@ -8,10 +8,10 @@ import { type RouteObject } from 'react-router-dom'
 import AppLayout from '../components/layout/AppLayout'
 import Dashboard from '../pages/dashboard'
 import Backtest from '../pages/backtest'
-import Logs from '../pages/logs'
-import Prompts from '../pages/prompts'
+import Agents from '../pages/agents'
 import Trades from '../pages/trades'
 import Decisions from '../pages/decisions'
+import Playground from '../pages/playground'
 
 const routes: RouteObject[] = [
   {
@@ -19,10 +19,10 @@ const routes: RouteObject[] = [
     children: [
       { path: '/', element: <Dashboard /> },
       { path: '/backtest', element: <Backtest /> },
-      { path: '/logs', element: <Logs /> },
+      { path: '/agents', element: <Agents /> },
       { path: '/trades', element: <Trades /> },
       { path: '/decisions', element: <Decisions /> },
-      { path: '/prompts', element: <Prompts /> },
+      { path: '/playground', element: <Playground /> },
     ],
   },
 ]

@@ -9,7 +9,7 @@
  */
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import { ConfigProvider, theme as antdTheme } from 'antd'
+import { ConfigProvider } from 'antd'
 import { DEFAULT_THEME, STORAGE_KEY, getThemeById } from '@/constants/theme'
 import type { ThemeConfig, ThemeMode } from '@/types/theme'
 

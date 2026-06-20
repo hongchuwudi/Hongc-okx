@@ -31,7 +31,6 @@ function calcMA(data: number[], period: number): (number | null)[] {
 
 export default function KlineCard({ refreshKey = 0 }: { refreshKey?: number }) {
   const status = useDashboardStore(s => s.status)
-  const wsConnected = useDashboardStore(s => s.wsConnected)
   const chartRef = useRef<ReactECharts>(null)
   const [timeframe, setTimeframe] = useState('1m')
   const [zoomIdx, setZoomIdx] = useState(0)
@@ -200,6 +199,7 @@ export default function KlineCard({ refreshKey = 0 }: { refreshKey?: number }) {
         return `<div style="font-size:11px">${ts}<br/>开: <b>${d[1]}</b>  收: <b>${d[2]}</b>  低: <b>${d[3]}</b>  高: <b>${d[4]}</b></div>`
       },
     },
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- markLines/candlestickData 等均派生自 data/position
   }), [data, position, aiSignal?.stop_loss, aiSignal?.take_profit, spanMs, zoomStart, zoomEnd])
 
   return (

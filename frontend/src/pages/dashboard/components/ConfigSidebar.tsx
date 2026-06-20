@@ -5,12 +5,13 @@
  *
  * Contains:
  * - Component: ConfigSidebar — 左侧配置面板，区分交易参数/风控参数两个分组
+ * - Component: ConfigField — 单个配置字段
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { fetchRuntimeConfig, updateRuntimeConfig } from '@/api/config'
 import { CONFIG_FIELDS } from '@/constants/config'
-import type { ConfigData } from '@/types/config'
+import type { ConfigData, ConfigFieldMeta } from '@/types/config'
 import FormInput from '@/components/common/FormInput'
 import FormSelect from '@/components/common/FormSelect'
 
@@ -52,7 +53,7 @@ export default function ConfigSidebar({ onConfigChange }: { onConfigChange?: () 
     } finally {
       setSaving(null)
     }
-  }, [config])
+  }, [config, onConfigChange])
 
   if (!config) {
     return (
@@ -122,8 +123,6 @@ export default function ConfigSidebar({ onConfigChange }: { onConfigChange?: () 
 
 // ── 单个字段 ──────────────────────────────────────────
 
-import type { ConfigFieldMeta } from '@/constants/config'
-
 function ConfigField({
   field,
   value,
@@ -155,7 +154,7 @@ function ConfigField({
             options={field.options}
             onChange={v => { setLocal(v); onChange(field.key, v) }}
             disabled={saving}
-            className="w-full text-xs select-bordered"
+            className="w-full"
           />
         ) : (
           <FormInput
@@ -169,7 +168,7 @@ function ConfigField({
             onBlur={() => onChange(field.key, local as number)}
             onKeyDown={e => { if (e.key === 'Enter') onChange(field.key, local as number) }}
             disabled={saving}
-            className="w-full text-xs input-bordered"
+            className="w-full"
           />
         )}
         {saving && (

@@ -6,7 +6,6 @@
  * 包含:
  * - 组件: DeskToys — 可配置摆放位置和主题色
  */
-import React from 'react'
 
 interface DeskToysProps {
   position: [number, number, number]  // 整体摆放中心，Y 会统一抬高到桌面高度

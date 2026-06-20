@@ -6,7 +6,6 @@
  * 包含:
  * - 组件: Chair — 可配置位置、旋转角度、装饰色
  */
-import React from 'react'
 
 interface ChairProps {
   position: [number, number, number]

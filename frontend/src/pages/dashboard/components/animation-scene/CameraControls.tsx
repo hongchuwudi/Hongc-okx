@@ -5,7 +5,7 @@
  */
 
 import { RotateCw, Maximize } from 'lucide-react'
-import type { CameraControlsProps } from '@/types/props/CameraControls'
+import type { CameraControlsProps } from '@/types/CameraControls'
 
 /**
  * 相机控制按钮组

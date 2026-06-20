@@ -9,7 +9,7 @@
  * - Component: CameraControls — 右上角控制按钮
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import { Canvas } from '@react-three/fiber'
 import Floor from './Floor'
 import Cubicle from './Cubicle'

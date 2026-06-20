@@ -340,7 +340,7 @@ export default function AgentLogCard() {
   const toggleTool = useCallback((key: string) => {
     setExpandedTools(prev => {
       const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.has(key)) { next.delete(key) } else { next.add(key) }
       return next
     })
   }, [])
@@ -442,7 +442,7 @@ export default function AgentLogCard() {
           {showScrollBtn && (
             <button
               onClick={scrollToBottom}
-              className="sticky bottom-2 mx-auto px-3 py-1 bg-primary text-primary-content text-[11px] rounded-full shadow-lg hover:opacity-90 transition-opacity z-10"
+              className="sticky bottom-2 mx-auto btn btn-primary btn-xs rounded-full shadow-lg z-10"
             >
               回到底部
             </button>

@@ -31,7 +31,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     // 尝试从 JSON 响应中提取后端错误消息，失败则用原始文本
-    let msg = ''
+    let msg: string
     try {
       const json = await res.json()
       msg = json?.error || json?.detail || ''

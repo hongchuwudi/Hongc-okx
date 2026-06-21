@@ -4,7 +4,9 @@
  * 描述: 回测历史记录表格 + 分页
  */
 
-import type { RunsTableProps } from '@/types/props'
+import type { RunsTableProps } from '@/types/props/props'
+import Paginator from '@/components/common/Paginator'
+import { Eye, CheckCircle, XCircle, Clock } from 'lucide-react'
 
 function statusLabel(s: string) {
   if (s === 'completed') return '已完成'
@@ -13,7 +15,7 @@ function statusLabel(s: string) {
   return s
 }
 
-export default function RunsTable({ runs, onView, page, pageSize, totalPages, total, onPageChange }: RunsTableProps) {
+export default function RunsTable({ runs, onView, page, pageSize, total, onPageChange }: RunsTableProps) {
   if (runs.length === 0) {
     return <p className="text-sm text-base-content/50 py-8 text-center">暂无回测记录，请先执行一次回测</p>
   }
@@ -37,26 +39,29 @@ export default function RunsTable({ runs, onView, page, pageSize, totalPages, to
             </tr>
           </thead>
           <tbody>
-            {runs.map(r => (
+            {runs.map((r: RunsTableProps['runs'][number]) => (
               <tr key={r.id}>
-                <td className="text-xs hidden md:table-cell">#{r.id}</td>
-                <td className="text-xs font-semibold">{r.strategy_name}</td>
+                <td className="text-xs py-1.5hidden md:table-cell">#{r.id}</td>
+                <td className="text-xs py-1.5font-semibold">{r.strategy_name}</td>
                 <td className="text-xs">{r.symbol}</td>
-                <td className="text-xs hidden md:table-cell">{r.timeframe}</td>
-                <td className="text-xs hidden md:table-cell">{r.data_count}</td>
-                <td className={`text-xs font-semibold ${(r.total_return_pct ?? 0) >= 0 ? 'text-success' : 'text-error'}`}>
+                <td className="text-xs py-1.5hidden md:table-cell">{r.timeframe}</td>
+                <td className="text-xs py-1.5hidden md:table-cell">{r.data_count}</td>
+                <td className={`text-xs py-1.5 font-semibold ${(r.total_return_pct ?? 0) >= 0 ? 'text-success' : 'text-error'}`}>
                   {(r.total_return_pct ?? 0).toFixed(2)}%
                 </td>
                 <td className="text-xs">{(r.win_rate ?? 0).toFixed(0)}%</td>
-                <td className="text-xs text-warning hidden md:table-cell">{(r.max_drawdown_pct ?? 0).toFixed(2)}%</td>
-                <td className="text-xs hidden md:table-cell">{(r.sharpe_ratio ?? 0).toFixed(2)}</td>
+                <td className="text-xs py-1.5text-warning hidden md:table-cell">{(r.max_drawdown_pct ?? 0).toFixed(2)}%</td>
+                <td className="text-xs py-1.5hidden md:table-cell">{(r.sharpe_ratio ?? 0).toFixed(2)}</td>
                 <td>
-                  <span className={`badge badge-xs ${r.status === 'completed' ? 'badge-success' : r.status === 'failed' ? 'badge-error' : 'badge-warning'}`}>
+                  <span className={`badge badge-xs gap-1 ${r.status === 'completed' ? 'badge-success' : r.status === 'failed' ? 'badge-error' : 'badge-warning'}`}>
+                    {r.status === 'completed' ? <CheckCircle size={10} /> : r.status === 'failed' ? <XCircle size={10} /> : <Clock size={10} />}
                     {statusLabel(r.status)}
                   </span>
                 </td>
                 <td>
-                  <button onClick={() => onView(r.id)} className="btn btn-xs btn-ghost">详情</button>
+                  <button onClick={() => onView(r.id)} className="btn btn-xs btn-ghost gap-1">
+                    <Eye size={12} /> 详情
+                  </button>
                 </td>
               </tr>
             ))}
@@ -65,24 +70,16 @@ export default function RunsTable({ runs, onView, page, pageSize, totalPages, to
       </div>
 
       {/* 分页条 */}
-      <div className="shrink-0 flex items-center justify-between pt-2 border-t border-base-200 text-xs bg-base-100">
-        <div className="flex items-center gap-1.5 whitespace-nowrap">
-          <span className="text-base-content/50">共 {total} 条</span>
-          <select
-            value={pageSize}
-            onChange={e => onPageChange(1, Number(e.target.value))}
-            className="select select-xs select-ghost"
-          >
-            <option value={10}>10条/页</option>
-            <option value={20}>20条/页</option>
-            <option value={50}>50条/页</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-1 whitespace-nowrap">
-          <button disabled={page <= 1} onClick={() => onPageChange(page - 1, pageSize)} className="btn btn-xs btn-ghost">上一页</button>
-          <span className="px-1">{page}/{totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => onPageChange(page + 1, pageSize)} className="btn btn-xs btn-ghost">下一页</button>
-        </div>
+      <div className="shrink-0 border-t border-base-200 bg-base-100 px-4 py-2">
+        <Paginator
+          size="small"
+          current={page}
+          total={total}
+          pageSize={pageSize}
+          pageSizeOptions={[10, 20, 50]}
+          showSizeChanger
+          onChange={onPageChange}
+        />
       </div>
     </div>
   )

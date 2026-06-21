@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Info } from 'lucide-react'
+import { Info, Play, Square, CandlestickChart } from 'lucide-react'
 import { runBacktestStream, fetchBacktestRuns, fetchBacktestDetail, fetchOhlcvPreview } from '@/api/backtest'
 import type { BacktestRunRequest, BacktestRunItem, BacktestDetail, BacktestTrade } from '@/types/backtest'
 import type { OhlcvBar } from '@/types/kline'
@@ -76,6 +76,17 @@ export default function Backtest() {
 
   const setField = useCallback((key: keyof BacktestRunRequest, value: string | number) => {
     setForm(prev => ({ ...prev, [key]: value }))
+  }, [])
+
+  const loadRuns = useCallback(async (page = 1, pageSize = 20) => {
+    try {
+      const res = await fetchBacktestRuns(page, pageSize)
+      setRuns(res.data)
+      setRunsPage(res.page)
+      setRunsPageSize(res.page_size)
+      setRunsTotal(res.total)
+      setRunsPages(res.total_pages)
+    } catch { /* 静默 */ }
   }, [])
 
   // 核心：流式回测 — 逐K线消费 SSE 事件
@@ -143,7 +154,8 @@ export default function Backtest() {
         setRunning(false)
       }
     }
-  }, [form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- previewData.length 变化不应重建此回调
+  }, [form, loadRuns])
 
   // 取消回测
   const handleCancel = useCallback(() => {
@@ -152,7 +164,7 @@ export default function Backtest() {
   }, [])
 
   // 预览K线 — 拉取实际 OHLCV 数据展示蜡烛图
-  const handlePreview = useCallback(async () => {
+  const handlePreview = async () => {
     setPreviewLoading(true)
     setPreviewData([])
     try {
@@ -164,18 +176,7 @@ export default function Backtest() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [form])
-
-  const loadRuns = useCallback(async (page = 1, pageSize = 20) => {
-    try {
-      const res = await fetchBacktestRuns(page, pageSize)
-      setRuns(res.data)
-      setRunsPage(res.page)
-      setRunsPageSize(res.page_size)
-      setRunsTotal(res.total)
-      setRunsPages(res.total_pages)
-    } catch { /* 静默 */ }
-  }, [])
+  }
 
   const viewDetail = useCallback(async (runId: number) => {
     setView('history')
@@ -287,8 +288,9 @@ export default function Backtest() {
   return (
     <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-5rem)]">
       {/* ===== 左侧：参数面板 ===== */}
-      <div className="lg:w-64 lg:shrink-0">
-        <div className="card bg-base-100 border border-base-300 h-full">
+      <div className="lg:w-64 lg:shrink-0 flex flex-col gap-3 h-full">
+        {/* 参数卡片 */}
+        <div className="card bg-base-100 border border-base-300 flex-1">
           <div className="card-body p-4 space-y-3 overflow-y-auto">
             <h2 className="card-title text-base">
               回测参数
@@ -326,24 +328,28 @@ export default function Backtest() {
                 </div>
               </>
             )}
+          </div>
+        </div>
 
-            {/* 运行/取消按钮 */}
+        {/* 操作卡片 */}
+        <div className="card bg-base-100 border border-base-300 shrink-0">
+          <div className="card-body p-3 space-y-2">
             {running ? (
-              <button onClick={handleCancel} className="btn btn-error btn-sm w-full">
-                取消回测
+              <button onClick={handleCancel} className="btn btn-error btn-sm w-full gap-1">
+                <Square size={14} /> 取消回测
               </button>
             ) : (
               <div className="flex gap-2">
-                <button onClick={handleRun} className="btn btn-primary btn-sm flex-1">
-                  开始回测
+                <button onClick={handleRun} className="btn btn-primary btn-sm flex-1 gap-1">
+                  <Play size={14} /> 开始回测
                 </button>
-                <button onClick={handlePreview} disabled={previewLoading} className="btn btn-outline btn-sm">
-                  {previewLoading ? <span className="loading loading-spinner loading-xs" /> : '预览K线'}
+                <button onClick={handlePreview} disabled={previewLoading} className="btn btn-outline btn-sm gap-1">
+                  {previewLoading ? <span className="loading loading-spinner loading-xs" /> : <><CandlestickChart size={14} /> 预览K线</>}
                 </button>
               </div>
             )}
 
-            <div className="divider text-xs text-base-content/40">视图</div>
+            <div className="divider text-xs text-base-content/40 my-0">视图</div>
 
             <div className="flex gap-1">
               <button

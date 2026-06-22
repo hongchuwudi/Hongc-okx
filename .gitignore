@@ -1,54 +1,72 @@
-# 环境变量（含API密钥）
-.env
+# ===========================================================================
+# .gitignore — hongc-okx 永续合约 AI 交易系统
+# 更新: 2025-06-21
+# ===========================================================================
 
-# Python
-.venv/
+# ── 密钥与凭证 ────────────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+
+# ── Python 项目 ────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-dist/
-!frontend/dist/
+*.egg
 build/
-legacy/
-temp/
 
-# 运行时数据
-data/
+# ── Python 虚拟环境 ────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Node / 前端 ────────────────────────────────────────
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ── 运行时数据 ────────────────────────────────────────
+data/**/*
+!data/**/.gitkeep
 *.log
 
-# Streamlit运行时配置
-.streamlit/
-.streamlit_config/
-
-# IDE
-.idea/
-
-# Node
-node_modules/
-frontend/node_modules/
-
-# Claude Code
-.claude/
-
-# 测试报告（仅保留 .gitkeep）
+# ── 测试产物 ──────────────────────────────────────────
 backend/tests/reports/*
 !backend/tests/reports/.gitkeep
 .coverage
 .coverage.*
 
-# 数据库文件
+# ── 数据库 ────────────────────────────────────────────
 *.db
 *.sqlite
 *.sqlite3
 
-# TypeScript
-frontend/tsconfig.tsbuildinfo
+# ── Streamlit 遗留配置 ──────────────────────────────────
+.streamlit/
+.streamlit_config/
 
-# 系统文件
-.DS_Store
-Thumbs.db
+# ── IDE / 编辑器 ──────────────────────────────────────
+.idea/
+.vscode/
 *.swp
 *.swo
 
-path/to/*
+# ── Claude Code ────────────────────────────────────────
+.claude/
+
+# ── 系统文件 ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── 前端测试产物 ──────────────────────────────────────
+test-results/
+playwright-report/
+
+# ── 临时文件 ──────────────────────────────────────────
+temp/
+*.tmp

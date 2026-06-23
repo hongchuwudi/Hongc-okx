@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 declare module '@tailwindcss/vite' {
-  import { Plugin } from 'vite';
+  import type { Plugin } from 'vite';
   const tailwindcss: () => Plugin;
   export default tailwindcss;
 }

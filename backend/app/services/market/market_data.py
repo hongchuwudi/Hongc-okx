@@ -115,13 +115,20 @@ class MarketDataService:
                 margin = _safe_float(pos.get("initialMargin"), 0)
                 liq = _safe_float(pos.get("liquidationPrice"), 0)
                 pnl = _safe_float(pos.get("unrealizedPnl"), 0)
-                pnl_pct = _safe_float(pos.get("percentage"), 0) * 100 if pos.get("percentage") else 0
+                # ccxt percentage 字段已是百分数（如 1.6455 表示 1.6455%），
+                # 不再 ×100（旧逻辑会算成 164.55%，污染盈亏显示）
+                pnl_pct = _safe_float(pos.get("percentage"), 0) if pos.get("percentage") else 0
                 lev = _safe_float(pos.get("leverage"), 1)
                 # 如果 notional 为 0，用 size * entry / leverage 估算
                 if notional <= 0:
                     notional = sz * entry * 0.01  # DOGE 合约 0.01 为 1 张
+                # side 规范化 — ccxt 可能返回 None/空字符串，统一为 long/short/None
+                raw_side = pos.get("side")
+                side = raw_side if raw_side in ("long", "short") else None
+                if side is None:
+                    logger.warning(f"OKX 持仓 side 异常: {raw_side!r}，持仓数据可能不可用")
                 return {
-                    "side": pos["side"],
+                    "side": side,
                     "size": sz,
                     "entry_price": entry,
                     "mark_price": mark,

@@ -24,6 +24,48 @@ _VALID_CONFIDENCE = {"HIGH", "MEDIUM", "LOW"}
 
 
 # ---------------------------------------------------------------------------
+# 字段归一化 — 防止 LLM 输出带后缀（如 "SELL (加仓做空)"）导致写库超长
+# ---------------------------------------------------------------------------
+
+# 信号归一化 — 从 LLM 输出中提取合法信号词，丢弃括号后缀等噪声。
+# "SELL (加仓做空)" → "SELL"；"买" 之类非法值 → "HOLD"（安全默认）。
+def _normalize_signal(val: str) -> str:
+    """将 signal 字段归一化为 BUY/SELL/HOLD 之一。
+
+    优先取首词大写；若不在合法集合，则尝试匹配字符串中包含的合法词；
+    都不命中则返回 HOLD（安全默认，避免写库超长 + 避免误下单）。
+    """
+    if not val:
+        return "HOLD"
+    text = str(val).upper().strip()
+    # 去掉常见 emoji 和括号后缀，取首词
+    text = re.sub(r"[🟢🔴]", "", text)
+    first_word = re.split(r"[\s(（\[【]", text, maxsplit=1)[0].strip()
+    if first_word in _VALID_SIGNALS:
+        return first_word
+    # 首词不合法时，检查是否包含任一合法词（如 "强烈BUY"）
+    for sig in _VALID_SIGNALS:
+        if sig in text:
+            return sig
+    return "HOLD"
+
+
+# 信心归一化 — 归一化为 HIGH/MEDIUM/LOW，非法值 → MEDIUM。
+def _normalize_confidence(val: str) -> str:
+    """将 confidence 字段归一化为 HIGH/MEDIUM/LOW 之一。"""
+    if not val:
+        return "MEDIUM"
+    text = str(val).upper().strip()
+    first_word = re.split(r"[\s(（\[【]", text, maxsplit=1)[0].strip()
+    if first_word in _VALID_CONFIDENCE:
+        return first_word
+    for conf in _VALID_CONFIDENCE:
+        if conf in text:
+            return conf
+    return "MEDIUM"
+
+
+# ---------------------------------------------------------------------------
 # 第 1 层: JSON 解析（花括号 + code fence + 尾逗号修复）
 # ---------------------------------------------------------------------------
 
@@ -178,6 +220,17 @@ class ParseResult:
         self.strategy = strategy  # "json" / "table" / "kv"
 
 
+# 解析结果归一化 — 三层解析统一过一遍，确保 signal/confidence 合法。
+# 防止 LLM 输出 "SELL (加仓做空)" 带后缀导致写库 String(10) 超长崩溃。
+def _finalize_parsed(parsed: dict) -> dict:
+    """对解析后的 dict 归一化 signal/confidence 字段，返回新 dict。"""
+    if "signal" in parsed:
+        parsed["signal"] = _normalize_signal(parsed["signal"])
+    if "confidence" in parsed:
+        parsed["confidence"] = _normalize_confidence(parsed["confidence"])
+    return parsed
+
+
 def parse_agent_output(raw: str) -> ParseResult:
     """三层兜底解析 LLM 输出：JSON → Markdown 表格 → 正则 KV。
 
@@ -191,18 +244,21 @@ def parse_agent_output(raw: str) -> ParseResult:
     # 第 1 层: JSON
     parsed = _parse_json(text)
     if parsed:
+        parsed = _finalize_parsed(parsed)
         logger.info(f"解析成功 (JSON): signal={parsed.get('signal', '?')}")
         return ParseResult(parsed, strategy="json")
 
     # 第 2 层: Markdown 表格
     parsed = _parse_markdown_table(text)
     if parsed:
+        parsed = _finalize_parsed(parsed)
         logger.info(f"解析成功 (Markdown表格): signal={parsed.get('signal', '?')}")
         return ParseResult(parsed, strategy="table")
 
     # 第 3 层: 正则 KV
     parsed = _parse_kv_text(text)
     if parsed:
+        parsed = _finalize_parsed(parsed)
         logger.info(f"解析成功 (正则KV): signal={parsed.get('signal', '?')}")
         return ParseResult(parsed, strategy="kv")
 

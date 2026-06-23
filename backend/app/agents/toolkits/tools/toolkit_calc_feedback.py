@@ -25,17 +25,23 @@ def generate_feedback() -> str:
         if entry <= 0:
             entry = price
         size = float(pos.get("size", 0))
+        leverage = float(pos.get("leverage", 1)) or 1
         direction = "多头" if pos["side"] == "long" else "空头"
-        margin = entry * size * 0.01
+        # 盈亏百分比 = 浮动盈亏 / 保证金 × 100
+        # 保证金优先用 OKX initialMargin，缺失时用 名义价值/杠杆 估算
+        margin = float(pos.get("margin", 0) or 0)
+        if margin <= 0:
+            notional = float(pos.get("notional", 0) or 0)
+            margin = notional / leverage if notional > 0 else 0
         pnl_pct = (pnl / margin * 100) if margin > 0 else 0
 
         if pnl > 0:
             verdict = "对了"
-            lines.append(f"【上一轮反馈】{direction}入场 @ ${entry:.0f}，浮动盈亏 ${pnl:+.2f} ({pnl_pct:+.1f}%) — {verdict}")
+            lines.append(f"【上一轮反馈】{direction}入场 @ ${entry:.4f}，浮动盈亏 ${pnl:+.2f} ({pnl_pct:+.1f}%) — {verdict}")
             lines.append("上一轮决策方向正确，当前策略可以参考。")
         else:
             verdict = "错了"
-            lines.append(f"【上一轮反馈】{direction}入场 @ ${entry:.0f}，浮动盈亏 ${pnl:+.2f} ({pnl_pct:+.1f}%) — {verdict}")
+            lines.append(f"【上一轮反馈】{direction}入场 @ ${entry:.4f}，浮动盈亏 ${pnl:+.2f} ({pnl_pct:+.1f}%) — {verdict}")
             lines.append("上一轮决策方向有误，请各 Agent 反思：是技术指标误判还是市场环境突变？")
     else:
         lines.append("【上一轮反馈】上一轮未开仓（HOLD），无持仓反馈")

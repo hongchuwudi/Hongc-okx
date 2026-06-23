@@ -59,13 +59,16 @@ class PositionManager:
         entry = float(raw_entry) if raw_entry is not None and float(raw_entry) > 0 else current_price
         size = float(position.get("size", 0))  # 持仓张数
         unrealized = float(position.get("unrealized_pnl", 0))  # 浮动盈亏
+        leverage = float(position.get("leverage", 1)) or 1
 
-        # 计算盈亏百分比（基于 1 倍杠杆估算）
-        if entry > 0 and size > 0:
-            margin = entry * size * 0.01  # 1 倍杠杆估算保证金
-            profit_pct = (unrealized / margin * 100) if margin > 0 else 0
-        else:
-            profit_pct = 0
+        # 计算盈亏百分比 = 浮动盈亏 / 保证金 × 100
+        # 保证金优先用 OKX initialMargin，缺失时用 名义价值/杠杆 估算
+        # （旧公式 entry*size*0.01 单位错误，会算出 +2539% 等荒谬值）
+        margin = float(position.get("margin", 0) or 0)
+        if margin <= 0:
+            notional = float(position.get("notional", 0) or 0)
+            margin = notional / leverage if notional > 0 else 0
+        profit_pct = (unrealized / margin * 100) if margin > 0 else 0
 
         # 计算新的止盈止损
         new_sl = self._calc_trailing_stop(side, entry, current_price, profit_pct, current_sl, atr_pct)

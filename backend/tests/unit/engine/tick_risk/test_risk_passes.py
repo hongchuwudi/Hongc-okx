@@ -1,0 +1,14 @@
+"""
+创建时间: 2026-06-23
+作者: hongchuwudi
+文件名: test_risk_passes.py 风控通过
+描述: 风控检查通过返回 True
+"""
+import pytest
+from app.engine.result.signal import Signal
+
+@pytest.mark.asyncio
+async def test_risk_passes(mock_engine, sample_account):
+    from app.engine.loop.tick_risk import tick_check_risk
+    sig = Signal(signal="BUY", confidence="HIGH")
+    assert await tick_check_risk(mock_engine, sig, sample_account, None, 100.0) is True

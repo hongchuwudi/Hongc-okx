@@ -17,7 +17,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # 加载 backend/.env
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent.parent.parent / ".env")
 
 from app.core.config.config_postgres import PostgresConfig
 from app.core.config.config_redis import RedisConfig

@@ -7,14 +7,13 @@
 Tick 步骤实现位于 loop/ 目录：
 - loop/tick_circuit.py — step 0: 熔断检查
 - loop/tick_emoji.py      — emoji 清洗工具
-- loop/tick_persistence.py — 持久化服务
 - loop/tick_market.py      — step 2: 行情获取
 - loop/tick_strategy.py — step 3: 策略分析
 - loop/tick_position.py — step 4: 动态持仓管理
 - loop/tick_memory.py  — step 5: AI 决策记忆
 - loop/tick_risk.py    — step 6: 风控检查
 - loop/tick_trade.py   — step 7: 交易执行
-- loop/tick_persist.py — step 8: 持久化 + 异常处理
+- loop/tick_persist.py — step 8: 持久化 + 异常处理 (持久化逻辑下沉到 services/persistence/)
 
 包含:
 - 类: TradingEngine — 交易引擎，事件驱动的主循环

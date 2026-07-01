@@ -2,10 +2,10 @@
 创建时间: 2026-06-06
 作者: hongchuwudi
 文件名: parser.py JSON解析与AgentReport转换
-描述: 多层兜底解析器 — JSON → Markdown表格 → 正则KV → 返回结构化错误供调用方重试
+描述: 多层兜底解析器 — JSON → Markdown表格 → 正则KV → 语义意图 → 返回结构化错误供调用方重试
 
 包含:
-- 函数: parse_agent_output — 从 LLM 原始输出中提取决策 dict（三层兜底）
+- 函数: parse_agent_output — 从 LLM 原始输出中提取决策 dict（四层兜底）
 - 函数: build_retry_prompt — 构造重试提示词（带错误反馈）
 - 函数: agent_output_to_report — 将解析后的 JSON dict 转为 AgentReport 对象
 """
@@ -208,7 +208,65 @@ def _parse_kv_text(text: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
-# 汇总: 三层兜底解析
+# 第 4 层: 语义意图降级（纯自然语言，无任何结构化字段时的最后兜底）
+# ---------------------------------------------------------------------------
+
+# 中文交易动作短语 — 必须是"明确的交易动作语义"，避免"适合交易""行情到来"
+# 这类含糊表述误判。BUY/SELL 短语优先级高于 HOLD（"加仓持有"里"加仓"是动作）。
+# 回归测试硬约束: "今天天气不错，适合交易" / "signal BUY confidence HIGH" / "无效文本"
+# 均不含以下任一短语，因此仍正常返回 None（保持 success=False）。
+_INTENT_BUY = ["加仓", "做多", "开多", "买入", "平空", "空头平仓", "继续持多", "加多"]
+_INTENT_SELL = ["减仓", "做空", "开空", "卖出", "平多", "多头平仓", "继续持空", "加空"]
+_INTENT_HOLD = ["耐心持有", "继续持有", "持有让利润", "继续持", "保持仓位",
+                "观望", "等待市场", "等待验证", "继续等待", "持有"]
+
+
+def _parse_intent(text: str) -> dict | None:
+    """从纯自然语言中识别交易意图动作，返回语义决策 dict。
+
+    识别规则:
+    - 扫描中文动作短语 → BUY/SELL/HOLD
+    - 否定必须紧邻动作（"不要加仓"），条件词可在动作前较远出现（"若下跌再买入"）→ 一律过滤
+    - BUY/SELL 优先于 HOLD（动作短语比状态短语更具体）
+    - 无任何动作短语 → 返回 None（噪音文本保持失败，不误判）
+    语义降级不自带仓位/止盈止损，由调用方用默认值兜底。
+    """
+    if not text:
+        return None
+
+    # 否定紧邻动作（前 3 字符内），条件词远邻（前 8 字符内）
+    negation_close = re.compile(r"(不要|别|暂不|不建议|不)")
+    conditional_far = re.compile(r"(如果|若|待|一旦|假如|假使)")
+
+    def _has_intent(phrases):
+        for p in phrases:
+            idx = text.find(p)
+            while idx != -1:
+                close_prefix = text[max(0, idx - 3):idx]
+                far_prefix = text[max(0, idx - 8):idx]
+                # 紧邻否定 或 远邻条件 → 跳过本处继续找
+                if negation_close.search(close_prefix) or conditional_far.search(far_prefix):
+                    idx = text.find(p, idx + len(p))
+                    continue
+                return p
+        return None
+
+    buy_hit = _has_intent(_INTENT_BUY)
+    sell_hit = _has_intent(_INTENT_SELL)
+    hold_hit = _has_intent(_INTENT_HOLD)
+
+    if buy_hit and not sell_hit:
+        return {"signal": "BUY", "confidence": "MEDIUM", "reason": f"语义识别: {buy_hit}"}
+    if sell_hit and not buy_hit:
+        return {"signal": "SELL", "confidence": "MEDIUM", "reason": f"语义识别: {sell_hit}"}
+    if hold_hit:
+        return {"signal": "HOLD", "confidence": "MEDIUM", "reason": f"语义识别: {hold_hit}"}
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# 汇总: 四层兜底解析
 # ---------------------------------------------------------------------------
 
 class ParseResult:
@@ -232,7 +290,7 @@ def _finalize_parsed(parsed: dict) -> dict:
 
 
 def parse_agent_output(raw: str) -> ParseResult:
-    """三层兜底解析 LLM 输出：JSON → Markdown 表格 → 正则 KV。
+    """四层兜底解析 LLM 输出：JSON → Markdown 表格 → 正则 KV → 语义意图。
 
     返回 ParseResult，调用方根据 .success 决定是否需要重试。
     """
@@ -262,8 +320,15 @@ def parse_agent_output(raw: str) -> ParseResult:
         logger.info(f"解析成功 (正则KV): signal={parsed.get('signal', '?')}")
         return ParseResult(parsed, strategy="kv")
 
+    # 第 4 层: 语义意图降级（纯自然语言最后兜底）
+    parsed = _parse_intent(text)
+    if parsed:
+        parsed = _finalize_parsed(parsed)
+        logger.info(f"解析成功 (语义意图): signal={parsed.get('signal', '?')}")
+        return ParseResult(parsed, strategy="intent")
+
     # 全部失败
-    logger.warning(f"三层解析均失败, raw={text[:300]}")
+    logger.warning(f"四层解析均失败, raw={text[:300]}")
     return ParseResult(
         None,
         error=(

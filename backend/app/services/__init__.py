@@ -12,4 +12,5 @@
 - dashboard/ — 仪表盘查询
 - engine/    — 引擎控制 + 调度
 - agent/     — Agent 协调 + 状态
+- persistence/ — Tick 数据落地（PostgreSQL + Redis 缓存 + Pub/Sub）
 """

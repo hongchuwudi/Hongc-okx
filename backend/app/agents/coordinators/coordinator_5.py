@@ -100,10 +100,20 @@ class AgentCoordinator:
         await agent_input("analyst", "收到调度师指令，开始技术分析")
         set_current_agent("reviewer")
         await agent_input("reviewer", "收到调度师指令，开始历史复盘")
-        analyst, reviewer = await asyncio.gather(
+        # 并行调用分析师 + 复盘师 — return_exceptions 避免一方 API 异常取消另一方
+        results = await asyncio.gather(
             asyncio.to_thread(self._analyst.invoke, shared, self._cfg),
             asyncio.to_thread(self._reviewer.invoke, shared, self._cfg),
+            return_exceptions=True,
         )
+        analyst, reviewer = results
+        # 失败方降级为空态，保证流水线不因单 Agent 抖动而整体中断
+        if isinstance(analyst, Exception):
+            logger.error(f"[分析师] 调用异常，降级为空态: {type(analyst).__name__}: {analyst}")
+            analyst = {"messages": []}
+        if isinstance(reviewer, Exception):
+            logger.error(f"[复盘师] 调用异常，降级为空态: {type(reviewer).__name__}: {reviewer}")
+            reviewer = {"messages": []}
         analyst, d = await handle_asks(analyst, "analyst", self._agents, shared, d)
         await agent_output("analyst", last_content(analyst)[:500], detect_handoff(analyst))
         detect_handoff(analyst)
@@ -164,13 +174,15 @@ class AgentCoordinator:
         logger.info("[交易裁决员] 完成")
 
         from app.agents.parser import parse_agent_output, build_retry_prompt
-        from app.agents.models import get_trader_llm
         parsed = parse_agent_output(raw_output)
         if not parsed.success:
+            # 重试必须复用 trader_state 上下文（价格/持仓/风控边界），
+            # 只把"请重新输出 JSON"作为追加消息，否则 Trader 在真空中只会再编一句自然语言。
             retry_msg = HumanMessage(content=build_retry_prompt(raw_output[:2000], parsed.error))
-            retry_llm = get_trader_llm()
-            retry_resp = await asyncio.to_thread(retry_llm.invoke, [retry_msg])
-            retry_text = retry_resp.content if hasattr(retry_resp, 'content') else str(retry_resp)
+            retry_state = {**trader_state,
+                           "messages": list(trader_state.get("messages", [])) + [retry_msg]}
+            retry_resp = await asyncio.to_thread(self._trader.invoke, retry_state, self._cfg)
+            retry_text = last_content(retry_resp)
             parsed = parse_agent_output(retry_text)
             logger.info(f"Trader 重试解析: success={parsed.success} strategy={parsed.strategy}")
         decision = parsed.data if parsed.success else {}

@@ -61,11 +61,9 @@ export default function TradesPage() {
         page: p, pageSize: ps,
         side: (s || undefined) as 'buy' | 'sell' | undefined,
       })
-      if (res.ok) {
-        setOkxData(res.data)
-        setOkxTotal(res.total)
-        setOkxPage(res.page)
-      }
+      setOkxData(res.data)
+      setOkxTotal(res.total)
+      setOkxPage(res.page)
     } catch { /* */ }
     setOkxLoading(false)
   }, [])

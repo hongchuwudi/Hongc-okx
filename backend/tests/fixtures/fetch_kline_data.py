@@ -14,8 +14,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import ccxt
 import pandas as pd
@@ -37,10 +35,18 @@ ALL_TF = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "
 # OKX 实时 K 线最多 1440 根，超过走历史 K 线（慢），按需限制
 MAX_BARS = 2000
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _make_ex(sandbox=False):
     ex = ccxt.okx({
         "hostname": "www.okx.cab", "enableRateLimit": True,
-        "verify": False, "options": {"defaultType": "swap"},
+        "verify": _env_bool("OKX_VERIFY_TLS", True), "options": {"defaultType": "swap"},
         "timeout": 30000,
     })
     proxy = os.getenv("HTTPS_PROXY")

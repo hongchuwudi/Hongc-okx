@@ -9,7 +9,7 @@
 """
 
 from app.engine.result.signal import Signal
-from app.engine.loop.tick_persistence import persist_tick, publish_event
+from app.services.persistence import persist_tick, publish_event
 from app.core.logger import get_logger
 
 logger = get_logger()

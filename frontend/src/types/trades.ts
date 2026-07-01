@@ -44,12 +44,10 @@ export interface OkxTrade {
 
 // OKX 成交分页响应
 export interface OkxTradePage {
-  ok: boolean
   data: OkxTrade[]
   total: number
   page: number
   page_size: number
   total_pages: number
   symbol: string
-  error?: string
 }

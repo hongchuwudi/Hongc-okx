@@ -8,7 +8,7 @@
 - 函数: tick_check_circuit — 检查熔断状态，True 继续 / False 跳过
 """
 
-from app.engine.loop.tick_persistence import publish_event
+from app.services.persistence import publish_event
 from app.core.logger import get_logger
 
 logger = get_logger()

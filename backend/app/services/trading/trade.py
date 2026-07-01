@@ -124,12 +124,12 @@ class TradeService:
     async def _set_tp_sl(
         self, symbol: str, signal: str, amount: float, sl: float, tp: float
     ) -> None:
-        from app.core.logger import get_logger
-        _log = get_logger()
+        from app.core.exceptions import ExternalServiceError
+        # 取消旧算法单 — 失败可容忍（旧单可能已触发/不存在），继续挂新单
         try:
             await self._exchange.cancel_algo_orders(symbol)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"取消旧算法单失败(可容忍): {type(e).__name__}: {e}")
         close_side = "sell" if signal == "BUY" else "buy"
         try:
             ticker = await self._exchange.fetch_ticker(symbol)
@@ -142,12 +142,14 @@ class TradeService:
         else:
             sl = min(sl, last * 0.999) if last else sl
             tp = max(tp, last * 1.001) if last else tp
+        # 挂止盈止损单 — 失败必须上抛，否则仓位无保护且调用方无感知
         try:
             await self._exchange.create_algo_order(symbol, close_side, "conditional", amount, sl, sl_side=True)
             await self._exchange.create_algo_order(symbol, close_side, "conditional", amount, tp, sl_side=False)
-            _log.info(f"SL/TP 已挂单: SL={sl:.5f} TP={tp:.5f}")
+            logger.info(f"SL/TP 已挂单: SL={sl:.5f} TP={tp:.5f}")
         except Exception as e:
-            _log.error(f"SL/TP 挂单失败(仓位无保护!): {e}")
+            logger.error(f"SL/TP 挂单失败(仓位无保护!): {type(e).__name__}: {e}")
+            raise ExternalServiceError(f"止盈止损挂单失败，仓位无保护: {e}")
 
     # 更新持仓的止盈止损算法单（取消旧单 + 挂新单）
     async def update_tp_sl(
@@ -219,9 +221,7 @@ class TradeService:
         end_time: str | None = None,
     ) -> dict:
         from datetime import datetime, timedelta, timezone
-        from app.exchange.client import ExchangeClient
-        from app.core.logger import get_logger
-        _log = get_logger()
+        from app.core.exceptions import BusinessError, ExternalServiceError
 
         exchange = ExchangeClient()
 
@@ -230,7 +230,7 @@ class TradeService:
             try:
                 since_ms = int(datetime.fromisoformat(start_time).timestamp() * 1000)
             except ValueError:
-                return {"ok": False, "error": f"start_time 格式错误: {start_time}", "data": [], "total": 0}
+                raise BusinessError(f"start_time 格式错误: {start_time}")
         else:
             since_ms = int((datetime.now(timezone.utc) - timedelta(days=7)).timestamp() * 1000)
 
@@ -245,10 +245,10 @@ class TradeService:
         try:
             raw = await exchange.fetch_my_trades(symbol, since_ms, limit)
         except Exception as e:
-            _log.error(f"OKX fetch_my_trades 失败: {type(e).__name__}: {e}")
-            return {"ok": False, "error": str(e), "data": [], "total": 0}
+            logger.error(f"OKX fetch_my_trades 失败: {type(e).__name__}: {e}")
+            raise ExternalServiceError(f"OKX 成交拉取失败: {e}")
 
-        _log.info(f"OKX 返回 {len(raw)} 笔原始成交")
+        logger.info(f"OKX 返回 {len(raw)} 笔原始成交")
 
         # 转换 + 筛选
         all_items = []
@@ -310,7 +310,6 @@ class TradeService:
         paged = all_items[start:start + page_size]
 
         return {
-            "ok": True,
             "data": paged,
             "total": total,
             "page": safe_page,

@@ -1,8 +1,7 @@
 """
-创建时间: 2026-06-08
+创建时间: 2026-06-30
 作者: hongchuwudi
-文件名: tick_persistence.py 持久化服务
-描述: Tick 完成后的持久化操作 — PostgreSQL 写入 + Redis 缓存 + Pub/Sub 事件推送
+描述: 持久化服务 — Tick 完成后的 PostgreSQL 写入 + Redis 缓存 + Pub/Sub 事件推送
 
 包含:
 - 类: PersistenceService — 持久化服务（DB写入/Redis缓存/事件推送）
@@ -14,16 +13,16 @@ from datetime import datetime
 
 from app.core.config import config
 from app.core.database import SyncSession, get_redis, get_sync_session
+from app.core.logger import get_logger
 from app.entities.system import SystemStatus
 from app.entities.trading import EquitySnapshot, Trade
-from app.core.logger import get_logger
 
 logger = get_logger()
 
 
 # 清理 LLM 输出中的破损 Unicode (lone surrogates)
 def _clean(s: str) -> str:
-    return s.encode('utf-8', 'surrogatepass').decode('utf-8', 'replace')
+    return s.encode("utf-8", "surrogatepass").decode("utf-8", "replace")
 
 
 # Tick 持久化服务 — 封装 PostgreSQL 写入、Redis 信号缓存和事件推送
@@ -49,7 +48,7 @@ class PersistenceService:
                 row.ai_signal = signal.signal
                 row.ai_confidence = signal.confidence
                 row.ai_reason = signal.reason
-                if hasattr(signal, 'agent_reports') and signal.agent_reports:
+                if hasattr(signal, "agent_reports") and signal.agent_reports:
                     cleaned = {k: _clean(v) for k, v in signal.agent_reports.items()}
                     row.ai_reason = json.dumps(
                         {"reason": _clean(signal.reason), "agents": cleaned},
@@ -139,7 +138,7 @@ class PersistenceService:
 # 全局单例
 persistence_service = PersistenceService()
 
-# 模块级包装函数 — 供 engine 直接 import 使用
+# 模块级包装函数 — 供 engine 调用（engine 只通过 services 访问持久化）
 persist_tick = persistence_service.persist_tick
 cache_signal = persistence_service.cache_signal
 publish_event = persistence_service.publish_event

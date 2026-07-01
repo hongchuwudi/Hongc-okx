@@ -24,7 +24,11 @@ logger = get_logger()
 
 # 创建 ccxt 实例（同步用，不含认证）
 def _new_okx(proxy_url: str | None) -> ccxt.Exchange:
-    ex = ccxt.okx({"hostname": "www.okx.cab", "enableRateLimit": True, "verify": False})
+    ex = ccxt.okx({
+        "hostname": "www.okx.cab",
+        "enableRateLimit": True,
+        "verify": config.okx.verify_tls,
+    })
     ex.options["fetchMarkets"] = ["swap"]
     if proxy_url:
         ex.https_proxy = proxy_url
@@ -117,7 +121,7 @@ class ExchangeClient:
             "password": okx_cfg.password,
             "hostname": "www.okx.cab",
             "enableRateLimit": True,
-            "verify": False,
+            "verify": okx_cfg.verify_tls,
             "options": {"defaultType": "swap"},
         })
         if okx_cfg.sandbox:

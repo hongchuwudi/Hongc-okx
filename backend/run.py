@@ -23,14 +23,10 @@ import pathlib
 import shutil
 import signal
 import sys
-import warnings
 
 sys.tracebacklimit = 0
 
-import urllib3
 import uvicorn
-
-warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
 
 from app.core.logger import get_logger, shutdown_logging
 
